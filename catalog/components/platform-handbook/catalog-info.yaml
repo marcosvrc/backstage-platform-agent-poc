@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: platform-handbook
+  title: Platform Handbook
+  description: Guia da plataforma - deploy, ambientes, padrões e golden paths
+  tags: [docs]
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+spec:
+  type: documentation
+  lifecycle: production
+  owner: group:platform-team
+  system: developer-platform

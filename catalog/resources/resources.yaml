@@ -1,0 +1,31 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: orders-db
+  title: Orders DB
+  description: PostgreSQL de pedidos
+spec:
+  type: database
+  owner: group:checkout-team
+  system: checkout
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: payments-db
+  title: Payments DB
+  description: PostgreSQL de pagamentos
+spec:
+  type: database
+  owner: group:payments-team
+  system: payments
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: orders-topic
+  title: Kafka topic orders.*
+spec:
+  type: kafka-topic
+  owner: group:checkout-team
+  system: checkout

@@ -1,0 +1,13 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: cart-web
+  title: Cart Web
+  description: Frontend do carrinho de compras
+  tags: [react, frontend]
+spec:
+  type: website
+  lifecycle: production
+  owner: group:checkout-team
+  system: checkout
+  consumesApis: [order-api]

@@ -1,0 +1,37 @@
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: commerce
+  title: Commerce
+  description: Tudo que envolve a jornada de compra do cliente
+spec:
+  owner: group:engineering
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: checkout
+  title: Checkout
+  description: Carrinho, pedidos e estoque
+spec:
+  owner: group:checkout-team
+  domain: commerce
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: payments
+  title: Payments
+  description: Processamento de pagamentos
+spec:
+  owner: group:payments-team
+  domain: commerce
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: developer-platform
+  title: Developer Platform
+  description: Portal, golden paths e documentação da plataforma
+spec:
+  owner: group:platform-team

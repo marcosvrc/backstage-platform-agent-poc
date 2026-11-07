@@ -1,0 +1,12 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: inventory-service
+  title: Inventory Service
+  description: Controle de estoque e reservas
+  tags: [nodejs]
+spec:
+  type: service
+  lifecycle: experimental
+  owner: group:checkout-team
+  system: checkout

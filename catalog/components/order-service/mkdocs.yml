@@ -1,0 +1,6 @@
+site_name: Order Service
+nav:
+  - Visão geral: index.md
+  - Runbook: runbook.md
+plugins:
+  - techdocs-core

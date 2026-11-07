@@ -1,0 +1,5 @@
+site_name: Payment Service
+nav:
+  - Visão geral: index.md
+plugins:
+  - techdocs-core

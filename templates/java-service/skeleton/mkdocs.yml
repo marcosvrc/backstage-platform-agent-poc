@@ -1,0 +1,5 @@
+site_name: ${{ values.name }}
+nav:
+  - Visão geral: index.md
+plugins:
+  - techdocs-core

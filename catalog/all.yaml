@@ -1,0 +1,18 @@
+# Ponto de entrada do catálogo fictício da POC.
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: acme-catalog
+  description: Catálogo fictício da Acme usado na POC do Platform Agent
+spec:
+  targets:
+    - ./org/org.yaml
+    - ./systems/systems.yaml
+    - ./apis/apis.yaml
+    - ./resources/resources.yaml
+    - ./components/cart-web/catalog-info.yaml
+    - ./components/order-service/catalog-info.yaml
+    - ./components/payment-service/catalog-info.yaml
+    - ./components/inventory-service/catalog-info.yaml
+    - ./components/notification-worker/catalog-info.yaml
+    - ./components/platform-handbook/catalog-info.yaml

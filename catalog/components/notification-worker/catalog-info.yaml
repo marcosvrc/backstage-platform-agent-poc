@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: notification-worker
+spec:
+  type: service
+  lifecycle: deprecated
+  owner: group:platform-team
+  consumesApis: [order-events]

@@ -1,0 +1,95 @@
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: engineering
+  title: Engenharia
+spec:
+  type: department
+  children: [platform-team, checkout-team, payments-team]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-team
+  title: Time de Plataforma
+  description: Responsável pelo portal, golden paths e infraestrutura compartilhada
+spec:
+  type: team
+  parent: engineering
+  profile:
+    email: platform@acme.example
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: checkout-team
+  title: Time de Checkout
+spec:
+  type: team
+  parent: engineering
+  profile:
+    email: checkout@acme.example
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: payments-team
+  title: Time de Pagamentos
+spec:
+  type: team
+  parent: engineering
+  profile:
+    email: payments@acme.example
+  children: []
+---
+# Usuário usado pelo login "guest" em ambiente local
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: guest
+spec:
+  profile:
+    displayName: Guest (dev local)
+  memberOf: [platform-team]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: ana.souza
+spec:
+  profile:
+    displayName: Ana Souza
+    email: ana.souza@acme.example
+  memberOf: [platform-team]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: bruno.lima
+spec:
+  profile:
+    displayName: Bruno Lima
+    email: bruno.lima@acme.example
+  memberOf: [checkout-team]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: carla.mendes
+spec:
+  profile:
+    displayName: Carla Mendes
+    email: carla.mendes@acme.example
+  memberOf: [checkout-team]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: diego.rocha
+spec:
+  profile:
+    displayName: Diego Rocha
+    email: diego.rocha@acme.example
+  memberOf: [payments-team]

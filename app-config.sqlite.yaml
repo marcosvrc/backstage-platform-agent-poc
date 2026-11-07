@@ -1,0 +1,6 @@
+# Override opcional para rodar sem Docker/Postgres (dados em memória).
+# Uso, a partir de portal/:  yarn start --config ../app-config.sqlite.yaml
+backend:
+  database:
+    client: better-sqlite3
+    connection: ':memory:'

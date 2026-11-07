@@ -1,0 +1,86 @@
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: order-api
+  title: Order API
+  description: API REST para criação e consulta de pedidos
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:checkout-team
+  system: checkout
+  definition: |
+    openapi: 3.0.3
+    info:
+      title: Order API
+      version: 1.0.0
+    paths:
+      /orders:
+        post:
+          summary: Cria um pedido
+          responses:
+            '201': { description: Pedido criado }
+      /orders/{id}:
+        get:
+          summary: Consulta um pedido
+          parameters:
+            - { name: id, in: path, required: true, schema: { type: string } }
+          responses:
+            '200': { description: Pedido encontrado }
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: payment-api
+  title: Payment API
+  description: API REST para autorização e captura de pagamentos
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:payments-team
+  system: payments
+  definition: |
+    openapi: 3.0.3
+    info:
+      title: Payment API
+      version: 2.1.0
+    paths:
+      /payments:
+        post:
+          summary: Autoriza um pagamento
+          responses:
+            '201': { description: Pagamento autorizado }
+      /payments/{id}/capture:
+        post:
+          summary: Captura um pagamento autorizado
+          parameters:
+            - { name: id, in: path, required: true, schema: { type: string } }
+          responses:
+            '200': { description: Pagamento capturado }
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: order-events
+  title: Order Events
+  description: Eventos de ciclo de vida de pedidos (Kafka)
+spec:
+  type: asyncapi
+  lifecycle: production
+  owner: group:checkout-team
+  system: checkout
+  definition: |
+    asyncapi: 2.6.0
+    info:
+      title: Order Events
+      version: 1.0.0
+    channels:
+      orders.created:
+        subscribe:
+          message:
+            name: OrderCreated
+            payload:
+              type: object
+              properties:
+                orderId: { type: string }
+                total: { type: number }

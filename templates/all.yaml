@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: acme-templates
+  description: Golden paths (templates do Scaffolder) da POC
+spec:
+  targets:
+    - ./node-service/template.yaml
+    - ./java-service/template.yaml

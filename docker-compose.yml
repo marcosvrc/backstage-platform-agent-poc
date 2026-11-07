@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: backstage-poc-postgres
+    environment:
+      POSTGRES_USER: backstage
+      POSTGRES_PASSWORD: backstage # apenas para desenvolvimento local
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U backstage']
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

@@ -1,0 +1,80 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: node-service
+  title: Serviço Node.js
+  description: Cria um serviço Node.js (HTTP) com catálogo e TechDocs prontos
+  tags: [recommended, nodejs]
+spec:
+  owner: group:platform-team
+  type: service
+  parameters:
+    - title: Informações do serviço
+      required: [name, description, owner, system]
+      properties:
+        name:
+          title: Nome
+          type: string
+          description: Nome único do serviço (kebab-case)
+          ui:field: EntityNamePicker
+          ui:autofocus: true
+        description:
+          title: Descrição
+          type: string
+          description: O que o serviço faz
+        owner:
+          title: Time dono
+          type: string
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: Group
+        system:
+          title: Sistema
+          type: string
+          ui:field: EntityPicker
+          ui:options:
+            catalogFilter:
+              kind: System
+    - title: Repositório
+      required: [repoUrl]
+      properties:
+        repoUrl:
+          title: Localização do repositório
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts: [github.com]
+  steps:
+    - id: fetch
+      name: Gerar código a partir do skeleton
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+          description: ${{ parameters.description }}
+          owner: ${{ parameters.owner }}
+          system: ${{ parameters.system }}
+          destination: ${{ parameters.repoUrl | parseRepoUrl }}
+    - id: publish
+      name: Publicar no GitHub
+      action: publish:github
+      input:
+        description: ${{ parameters.description }}
+        repoUrl: ${{ parameters.repoUrl }}
+        defaultBranch: main
+        repoVisibility: private
+    - id: register
+      name: Registrar no catálogo
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+  output:
+    links:
+      - title: Repositório
+        url: ${{ steps['publish'].output.remoteUrl }}
+      - title: Abrir no catálogo
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}

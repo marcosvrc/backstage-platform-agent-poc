@@ -1,0 +1,7 @@
+site_name: Platform Handbook
+nav:
+  - Início: index.md
+  - Deploy: deploy.md
+  - Padrões de serviço: standards.md
+plugins:
+  - techdocs-core
