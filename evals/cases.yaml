@@ -98,7 +98,7 @@ cases:
     prompt: Qual é a política de retenção de logs da Acme?
     expect:
       tools_any: [agent:search-techdocs]
-      contains_any: [nao encontrei, nao ha, nao esta documentad, nao cobre, nao menciona]
+      contains_any: [nao encontrei, nao ha, nao esta documentad, nao cobre, nao menciona, nao fala, nao trata, sem inventar]
 
   # ---------- Conformidade ----------
   - id: comp-all

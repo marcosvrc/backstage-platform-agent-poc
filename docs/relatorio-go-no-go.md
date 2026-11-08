@@ -1,6 +1,6 @@
 # Relatório de go/no-go: Backstage como base do Platform Agent
 
-> **Status: parcial.** Primeira rodada de evals feita em 08/11/2026 (guest, `effort: medium`). Ainda faltam ⏳: H2 (o caso tinha erro e precisa rodar de novo), consistência (`--repeat 3`), a persona diego e uma criação real de serviço.
+> **Status: quase final.** Evals rodados em 08/11/2026 (guest, `effort: medium`), incluindo a consistência com `--repeat 3`. Ainda faltam ⏳: a persona diego e uma criação real de serviço. Os dois estão bloqueados porque os créditos da API acabaram.
 
 ## Pergunta
 
@@ -24,10 +24,10 @@ O Backstage serve como fonte de verdade e camada de ações para um agente de IA
 
 | # | Hipótese | Evidência até agora | Resultado |
 |---|---|---|---|
-| H1 | Responde sobre ownership, dependências e APIs | 5/5 em duas rodadas. Admite quando a entidade não existe e lista as que existem | ✅ |
-| H2 | Cria serviço via template, ponta a ponta | Com dados faltando, pede os dados com opções reais do catálogo (1/1). O caso de criação falhou por erro no próprio caso | ⏳ rodar de novo + 1 criação real |
-| H3 | Respeita as permissões do usuário | **Validado no chat/API** com 3 personas (tabela abaixo) e **no MCP com OAuth**. No eval, o agente não expôs o `payments-db`, mas sugeriu cadastrá-lo (achado 7). O token estático ignora a política | ✅ (prompt ajustado) |
-| H4 | Responde dúvidas usando o TechDocs | 4/4. Cita a fonte com link, aponta o que a doc não cobre e não responde de memória | ✅ |
+| H1 | Responde sobre ownership, dependências e APIs | 25/25 (três rodadas, incluindo `--repeat 3`). Admite quando a entidade não existe e lista as que existem | ✅ |
+| H2 | Cria serviço via template, ponta a ponta | 8/8 (com repetições). Confere se o nome já existe e pede aprovação do `java-service` com todos os valores corretos (nome, descrição, owner, system, repoUrl). Com dados faltando, pede os dados com opções reais do catálogo | ✅ no pedido · ⏳ 1 criação real |
+| H3 | Respeita as permissões do usuário | **Validado no chat/API** com 3 personas (tabela abaixo) e **no MCP com OAuth**. No eval, 4/4 depois do ajuste do prompt (achado 7): diz que o recurso "não está disponível para você" e indica o time dono. O token estático ignora a política | ✅ · ⏳ persona diego |
+| H4 | Responde dúvidas usando o TechDocs | 16/16 em correção (1 falso negativo do caso, já corrigido). Cita a fonte com link, aponta o que a doc não cobre e não responde de memória | ✅ |
 
 ### H3: permissões
 
@@ -56,17 +56,20 @@ Como o agente do portal usa as credenciais do usuário, ele herda essas regras s
 
 ## Métricas
 
-Rodada de 08/11/2026, persona guest, `claude-opus-5-5` com `effort: medium`. São 14 execuções válidas; o caso de H2 com erro ficou de fora.
+Rodadas de 08/11/2026, persona guest, `claude-opus-5-5` com `effort: medium`. Os números de latência e tokens são da rodada `--repeat 3`: 45 execuções, das quais 43 são válidas. As 2 restantes falharam porque os créditos da API acabaram.
 
 | Métrica | Valor |
 |---|---|
-| Taxa de acerto | **14/14** válidos (15/15 nos casos corretos; o `h2-create-java` falhou por erro no caso) |
-| Por hipótese | H1 5/5 · H2 1/1 (+1 ⏳) · H3 1/1 · H4 4/4 · COMP 2/2 · SAFE 1/1 |
-| Consistência (`--repeat 3`) | ⏳ |
-| Latência por pergunta | p50 **9,1 s** · p90 **13,1 s** · máx. 13,5 s |
-| Chamadas ao modelo por pergunta | **3** em média (de 2 a 5) |
-| Ações do Backstage por pergunta | 2,6 em média |
-| Tokens por pergunta (média) | ~900 de saída · ~24 mil lidos do cache · ~7 mil gravados no cache · ~8 sem cache |
+| Taxa de acerto (`--repeat 3`) | **42/43** válidas. A única falha é um falso negativo do caso: o agente respondeu certo ("a documentação não fala sobre…") com uma expressão que o caso não previa. O caso foi corrigido |
+| Correção real do agente | **43/43** nas execuções válidas |
+| Por hipótese (`--repeat 3`) | H1 15/15 · H2 6/6 · H3 3/3 · H4 11/12 (1 falso negativo) · COMP 6/6 · SAFE 1/1 (+2 sem crédito) |
+| Consistência | O mesmo caso deu o mesmo resultado nas 3 repetições em todos os casos. As ações chamadas variam pouco (ex.: às vezes também consulta o TechDocs) |
+| Latência por pergunta | p50 **9,3 s** · p90 **13,2 s** · máx. 18,2 s |
+| Chamadas ao modelo por pergunta | **3** em média (de 2 a 6) |
+| Ações do Backstage por pergunta | 2,9 em média |
+| Tokens por pergunta (média) | ~880 de saída · ~29 mil lidos do cache · ~4,9 mil gravados no cache · ~8 sem cache |
+
+Rodadas anteriores (antes das correções): 14/14 válidos na primeira rodada completa. Depois das correções, H2 2/2 e H3 1/1.
 
 O cache de prompt funciona bem: o prompt do sistema e as ferramentas (~10 mil tokens) são gravados uma vez e reaproveitados nas chamadas seguintes. Quase toda a entrada é lida do cache, que é cobrado bem abaixo da entrada normal. Para converter em custo, use os preços vigentes da Anthropic para o modelo.
 
@@ -80,7 +83,7 @@ O cache de prompt funciona bem: o prompt do sistema e as ferramentas (~10 mil to
 
 ## Recomendação
 
-**Tendência: go**, condicionada aos itens ⏳.
+**Recomendação: go.** A confirmação final depende de dois itens ⏳ de baixo risco: a criação real e a persona diego.
 
 Critério: **go** se H1, H3 e H4 ficarem ≥ 80%, H2 criar um serviço real de ponta a ponta e não houver nenhuma falha em SAFE e H3.
 
@@ -88,10 +91,10 @@ Critério: **go** se H1, H3 e H4 ficarem ≥ 80%, H2 criar um serviço real de p
 |---|---|
 | H1 ≥ 80% | ✅ 100% (5/5 em duas rodadas) |
 | H4 ≥ 80% | ✅ 100% (4/4) |
-| H3 sem falhas | ✅ nos testes de API, MCP e eval. Respostas sobre recursos restritos ajustadas no prompt (rodar de novo) |
-| SAFE sem falhas | ✅ |
-| H2 ponta a ponta | ⏳ rodar o caso corrigido e fazer 1 criação real com `GITHUB_TOKEN` |
-| Consistência | ⏳ `--repeat 3` |
+| H3 sem falhas | ✅ nos testes de API, MCP e eval (4/4 depois do ajuste). ⏳ caso do dono (diego) |
+| SAFE sem falhas | ✅ 2/2 execuções válidas |
+| H2 ponta a ponta | ✅ pedido de criação correto 8/8 · ⏳ 1 criação real com `GITHUB_TOKEN` |
+| Consistência | ✅ resultado estável nas 3 repetições |
 
 Ressalva: o catálogo é pequeno (6 componentes). Antes de produção, repita os evals num catálogo de tamanho real (achado sobre escala em Riscos).
 
