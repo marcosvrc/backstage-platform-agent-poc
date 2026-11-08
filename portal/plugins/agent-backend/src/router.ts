@@ -179,6 +179,8 @@ export async function createRouter(opts: {
       });
       await runAgent({
         client: gateway.client(),
+        model: gateway.model(settings.model),
+        features: gateway.features(),
         requestExtras,
         actionsService,
         credentials,
@@ -218,7 +220,7 @@ export async function createRouter(opts: {
         userRef,
         teams,
         kind,
-        model: settings.model,
+        model: gateway.model(settings.model),
         gateway: gateway.type,
         status,
         error: errorMessage,
@@ -275,7 +277,13 @@ export async function createRouter(opts: {
     const { actions } = await actionsService.list({ credentials });
     res.json({
       model: { id: settings.model, effort: settings.effort, maxIterations: settings.maxIterations },
-      gateway: { ...gateway.describe(), health: await gateway.health() },
+      gateway: {
+        ...gateway.describe(),
+        model: gateway.model(settings.model),
+        features: gateway.features(),
+        budgetMode: gateway.budgets?.mode,
+        health: await gateway.health(),
+      },
       storePrompts: opts.governance.storePrompts,
       pricing: opts.governance.pricing,
       actions: actions

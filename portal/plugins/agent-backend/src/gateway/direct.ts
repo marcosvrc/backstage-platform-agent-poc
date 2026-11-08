@@ -1,6 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash } from 'node:crypto';
-import type { CallerContext, GatewayHealth, GatewayRequestExtras, ModelGateway } from './types';
+import {
+  ALL_FEATURES,
+  type CallerContext,
+  type GatewayHealth,
+  type GatewayRequestExtras,
+  type ModelGateway,
+} from './types';
 
 /**
  * Chamada direta à API da Anthropic, sem gateway.
@@ -18,6 +24,14 @@ export class DirectAnthropicGateway implements ModelGateway {
 
   client(): Anthropic {
     return (this.#client ??= new Anthropic(this.opts.apiKey ? { apiKey: this.opts.apiKey } : {}));
+  }
+
+  model(logicalModel: string): string {
+    return logicalModel;
+  }
+
+  features() {
+    return ALL_FEATURES;
   }
 
   requestExtras(caller: CallerContext): GatewayRequestExtras {

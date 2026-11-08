@@ -119,6 +119,8 @@ export class BudgetService {
   describe() {
     return {
       supported: Boolean(this.deps.budgets),
+      /** managed: o portal define o orçamento; external: definido no gateway. */
+      mode: this.deps.budgets?.mode,
       enabled: this.deps.settings.enabled,
       monthlyUsd: this.deps.settings.monthlyUsd,
       overrides: this.deps.settings.teams,

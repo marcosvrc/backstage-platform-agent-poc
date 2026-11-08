@@ -19,6 +19,28 @@ export interface GatewayRequestExtras {
   headers?: Record<string, string>;
 }
 
+/**
+ * Recursos da Messages API que o destino aceita. O agente só envia o que estiver ligado.
+ * Ex.: o fallback no servidor existe só na API da Anthropic; no Bedrock, fica desligado.
+ */
+export interface ModelFeatures {
+  /** Beta server-side-fallback + `fallbacks: 'default'` (só API da Anthropic). */
+  serverSideFallback: boolean;
+  /** `output_config.effort`. */
+  effort: boolean;
+  /** `eager_input_streaming` nas tools. */
+  eagerToolStreaming: boolean;
+  /** `cache_control` (cache de prompt). */
+  promptCaching: boolean;
+}
+
+export const ALL_FEATURES: ModelFeatures = {
+  serverSideFallback: true,
+  effort: true,
+  eagerToolStreaming: true,
+  promptCaching: true,
+};
+
 export interface GatewayHealth {
   ok: boolean;
   detail?: string;
@@ -41,6 +63,10 @@ export interface ModelGateway {
   describe(): { type: string; displayName: string; baseUrl?: string };
   /** Cliente do SDK já apontado para o destino certo. */
   client(): Anthropic;
+  /** Nome do modelo no destino (ex.: o alias do modelo no LiteLLM). */
+  model(logicalModel: string): string;
+  /** Recursos da Messages API aceitos pelo destino. */
+  features(): ModelFeatures;
   /** Atribuição (usuário, time, tags) e credencial para uma chamada. */
   requestExtras(caller: CallerContext): GatewayRequestExtras | Promise<GatewayRequestExtras>;
   /** Verificação de saúde para o painel. */
@@ -60,11 +86,18 @@ export interface TeamBudgetStatus {
   maxBudgetUsd?: number;
   /** Quando o gasto do período zera (ISO 8601). */
   resetAt?: string;
+  /** Falha ao ler o gasto deste time no gateway. */
+  error?: string;
 }
 
 /** Controle de orçamento aplicado pelo gateway (ele bloqueia ao estourar). */
 export interface GatewayBudgets {
-  /** Cria o time no gateway ou ajusta o orçamento mensal. Idempotente. */
+  /**
+   * managed: o portal cria os times e define o orçamento (ex.: LiteLLM com adminKey).
+   * external: os times e orçamentos são do gateway; o portal só lê o gasto.
+   */
+  readonly mode: 'managed' | 'external';
+  /** Cria o time no gateway ou ajusta o orçamento mensal. Idempotente. No modo external, não faz nada. */
   ensureTeam(teamRef: string, monthlyBudgetUsd: number): Promise<void>;
   /** Times gerenciados pelo portal, com gasto e orçamento. */
   list(): Promise<TeamBudgetStatus[]>;

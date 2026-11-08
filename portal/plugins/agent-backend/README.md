@@ -38,11 +38,18 @@ O agente sempre fala a Messages API da Anthropic pelo SDK oficial. A interface `
 | Tipo | Classe | Config |
 |---|---|---|
 | `direct` | `DirectAnthropicGateway` | `agent.anthropicApiKey` ou `ANTHROPIC_API_KEY` |
-| `litellm` | `LiteLLMGateway` | `agent.gateway.{baseUrl, apiKey, adminKey, tags, sendMetadata}` |
+| `litellm` | `LiteLLMGateway` | `agent.gateway.{baseUrl, apiKey, route, model, features, adminKey, teamKeys, tags, sendMetadata}` |
 
-Para outro gateway, implemente `ModelGateway` (`describe`, `client`, `requestExtras`, `health`) e registre a classe em `GATEWAY_FACTORIES`.
+Para outro gateway, implemente `ModelGateway` (`describe`, `client`, `model`, `features`, `requestExtras`, `health`) e registre a classe em `GATEWAY_FACTORIES`.
 
-**Orçamento (opcional):** um gateway que controla gasto expõe `budgets` (`GatewayBudgets`: `ensureTeam`, `list`, `isBudgetExceeded`). No LiteLLM, ele fica ativo quando há `adminKey`:
+- **`model(logical)`**: nome do modelo no destino (no LiteLLM, o alias do `model_list`).
+- **`features()`**: recursos da Messages API aceitos pelo destino (`serverSideFallback`, `effort`, `eagerToolStreaming`, `promptCaching`). O agente só envia o que estiver ligado. No LiteLLM, a rota `messages` (Bedrock, Vertex) desliga o fallback por padrão.
+
+**Orçamento (opcional):** um gateway que controla gasto expõe `budgets` (`GatewayBudgets`: `mode`, `ensureTeam`, `list`, `isBudgetExceeded`).
+
+No LiteLLM com `teamKeys` (modo `external`), os teams e orçamentos são dos admins do LiteLLM: o pedido sai com a key do time, e o gasto é lido com a mesma key (`/key/info` e `/team/info`, sem permissão de admin).
+
+No LiteLLM com `adminKey` (modo `managed`):
 - cada Group do catálogo vira um *team* (`backstage-<nome>`) com `max_budget` e `budget_duration: 1mo`;
 - cada team ganha uma virtual key (`backstage-agent:<team>`), derivada da `adminKey` por HMAC, então não precisa ser guardada;
 - o pedido sai com a key do time que paga, no header `Authorization`, e o LiteLLM recusa com HTTP 429 `budget_exceeded` quando o orçamento estoura.

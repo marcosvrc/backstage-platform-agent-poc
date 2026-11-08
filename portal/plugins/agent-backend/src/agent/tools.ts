@@ -14,7 +14,10 @@ export function requiresApproval(action: ActionsServiceAction): boolean {
  * Converte as ações do Actions Registry do Backstage em tools do Claude.
  * A lista é ordenada por id para manter o prefixo do prompt estável (cache).
  */
-export function actionsToTools(actions: ActionsServiceAction[]): {
+export function actionsToTools(
+  actions: ActionsServiceAction[],
+  options: { eagerInputStreaming?: boolean } = {},
+): {
   tools: Anthropic.Beta.BetaTool[];
   byName: Map<string, ActionsServiceAction>;
 } {
@@ -35,7 +38,7 @@ export function actionsToTools(actions: ActionsServiceAction[]): {
           ...schema,
           type: 'object',
         } as Anthropic.Beta.BetaTool.InputSchema,
-        eager_input_streaming: true,
+        ...(options.eagerInputStreaming === false ? {} : { eager_input_streaming: true }),
       } satisfies Anthropic.Beta.BetaTool;
     });
   return { tools, byName };

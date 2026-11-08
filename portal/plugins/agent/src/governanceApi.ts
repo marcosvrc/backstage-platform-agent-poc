@@ -58,6 +58,10 @@ export interface Policy {
     type: string;
     displayName: string;
     baseUrl?: string;
+    /** Nome do modelo no destino (ex.: alias no LiteLLM). */
+    model?: string;
+    features?: Record<string, boolean>;
+    budgetMode?: 'managed' | 'external';
     health: { ok: boolean; detail?: string };
   };
   storePrompts: boolean;
@@ -90,6 +94,8 @@ export interface EvalRun {
 export interface Budgets {
   /** O gateway atual controla orçamento? */
   supported: boolean;
+  /** managed: o portal define o orçamento; external: definido pelos admins do gateway. */
+  mode?: 'managed' | 'external';
   enabled: boolean;
   monthlyUsd: number;
   overrides: Record<string, number>;
@@ -102,6 +108,7 @@ export interface Budgets {
     maxBudgetUsd?: number;
     resetAt?: string;
     ratio?: number;
+    error?: string;
   }>;
   alerts: Array<{
     createdAt: string;

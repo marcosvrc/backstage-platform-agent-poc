@@ -552,6 +552,13 @@ function DailyBars({ days }: { days: Overview['byDay'] }) {
   );
 }
 
+const FEATURE_LABEL: Record<string, string> = {
+  serverSideFallback: 'fallback',
+  effort: 'effort',
+  eagerToolStreaming: 'tools em streaming',
+  promptCaching: 'cache',
+};
+
 const usd = (n: number) => `US$ ${n.toFixed(2)}`;
 const fmtDate = (iso?: string) =>
   iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '–';
@@ -616,6 +623,7 @@ function BudgetsTab() {
   const atRisk = data.teams.filter(t => (t.ratio ?? 0) >= warn).length;
   const exhausted = data.teams.filter(t => (t.ratio ?? 0) >= 1).length;
   const nextReset = data.teams.map(t => t.resetAt).filter(Boolean).sort()[0];
+  const external = data.mode === 'external';
   return (
     <>
       {data.unavailable && (
@@ -625,7 +633,11 @@ function BudgetsTab() {
       )}
       <div style={s.tiles}>
         <Tile label="Gasto no mês" value={usd(spend)} hint="calculado pelo gateway" />
-        <Tile label="Orçamento somado" value={usd(budget)} hint={`padrão ${usd(data.monthlyUsd)} por time`} />
+        <Tile
+          label="Orçamento somado"
+          value={usd(budget)}
+          hint={external ? 'definido pelos admins do gateway' : `padrão ${usd(data.monthlyUsd)} por time`}
+        />
         <Tile label="Times em atenção" value={fmt(atRisk)} hint={`${exhausted} com orçamento esgotado`} />
         <Tile label="Renovação" value={<span style={{ fontSize: 20 }}>{fmtDate(nextReset)}</span>} hint="o gasto zera nessa data" />
       </div>
@@ -656,7 +668,13 @@ function BudgetsTab() {
                   <td style={{ ...s.td, ...s.num }}>{usd(t.spendUsd)}</td>
                   <td style={{ ...s.td, ...s.num }}>{t.maxBudgetUsd === undefined ? '–' : usd(t.maxBudgetUsd)}</td>
                   <td style={s.td}>
-                    <BudgetMeter ratio={t.ratio} thresholds={data.thresholds} />
+                    {t.error ? (
+                      <span style={{ ...s.chip, color: 'var(--bui-fg-negative)' }} title={t.error}>
+                        <RiCloseLine size={12} /> falha ao ler
+                      </span>
+                    ) : (
+                      <BudgetMeter ratio={t.ratio} thresholds={data.thresholds} />
+                    )}
                   </td>
                   <td style={s.td}>{fmtDate(t.resetAt)}</td>
                 </tr>
@@ -664,7 +682,11 @@ function BudgetsTab() {
               {data.teams.length === 0 && (
                 <tr>
                   <td style={s.td} colSpan={5}>
-                    <Text color="secondary">Nenhum time sincronizado ainda (a sincronização roda a cada 5 minutos).</Text>
+                    <Text color="secondary">
+                      {external
+                        ? 'Nenhum time com key configurada (agent.gateway.teamKeys).'
+                        : 'Nenhum time sincronizado ainda (a sincronização roda a cada 5 minutos).'}
+                    </Text>
                   </td>
                 </tr>
               )}
@@ -707,14 +729,22 @@ function BudgetsTab() {
       <Section title="Regras de orçamento">
         <div style={s.card}>
           <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
-            <li>
-              Cada Group do catálogo tem orçamento mensal de <strong>{usd(data.monthlyUsd)}</strong>
-              {Object.keys(data.overrides).length > 0 &&
-                ` (exceções: ${Object.entries(data.overrides)
-                  .map(([team, v]) => `${shortRef(team)} ${usd(v)}`)
-                  .join(', ')})`}
-              . O pedido é cobrado do primeiro time do usuário.
-            </li>
+            {external ? (
+              <li>
+                Os teams e orçamentos são definidos pelos <strong>admins do gateway</strong>. O portal usa a key de cada time
+                (<code>agent.gateway.teamKeys</code>) e só lê o gasto. Times sem key usam a key do portal, sem orçamento próprio.
+              </li>
+            ) : (
+              <li>
+                Cada Group do catálogo tem orçamento mensal de <strong>{usd(data.monthlyUsd)}</strong>
+                {Object.keys(data.overrides).length > 0 &&
+                  ` (exceções: ${Object.entries(data.overrides)
+                    .map(([team, v]) => `${shortRef(team)} ${usd(v)}`)
+                    .join(', ')})`}
+                .
+              </li>
+            )}
+            <li>O pedido é cobrado do primeiro time do usuário.</li>
             <li>
               Alertas no sino em {data.thresholds.map(t => `${Math.round(t * 100)}%`).join(' e ')}: para o próprio time e para{' '}
               {data.notify.map(shortRef).join(', ') || 'ninguém mais'}.
@@ -939,9 +969,23 @@ function PolicyTab({ policy, error }: { policy?: Policy; error?: Error }) {
             <>
               {policy.gateway.health.ok ? 'saudável' : `indisponível: ${policy.gateway.health.detail ?? ''}`}
               {policy.gateway.baseUrl && ` · ${policy.gateway.baseUrl}`}
+              {policy.gateway.model && policy.gateway.model !== policy.model.id && ` · modelo ${policy.gateway.model}`}
             </>
           }
         />
+        {policy.gateway.features && (
+          <Tile
+            label="Recursos no destino"
+            value={
+              <span style={{ fontSize: 18 }}>
+                {Object.values(policy.gateway.features).filter(Boolean).length}/{Object.keys(policy.gateway.features).length}
+              </span>
+            }
+            hint={Object.entries(policy.gateway.features)
+              .map(([k, on]) => `${FEATURE_LABEL[k] ?? k} ${on ? 'sim' : 'não'}`)
+              .join(' · ')}
+          />
+        )}
         <Tile
           label="Ações expostas"
           value={fmt(policy.actions.length)}

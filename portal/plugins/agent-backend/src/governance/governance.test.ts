@@ -32,10 +32,14 @@ function fakeLiteLLM() {
         return json(200, {});
       case '/team/list':
         return json(200, [...teams.values()]);
-      case '/key/info':
-        return keys.has(url.searchParams.get('key')!)
-          ? json(200, {})
-          : json(404, { error: { message: 'Key not found' } });
+      case '/key/info': {
+        // Sem ?key=, a própria key do header (como o LiteLLM faz para keys sem admin).
+        const key =
+          url.searchParams.get('key') ??
+          String((init?.headers as Record<string, string>)?.Authorization).replace('Bearer ', '');
+        const k = keys.get(key);
+        return k ? json(200, { info: k }) : json(404, { error: { message: 'Key not found' } });
+      }
       case '/key/generate':
         keys.set(body.key, body);
         return json(200, { key: body.key });
@@ -115,6 +119,55 @@ describe('gateways', () => {
     expect(await gw.budgets!.list()).toEqual([
       { teamRef: 'group:default/checkout-team', spendUsd: 0, maxBudgetUsd: 80, resetAt: undefined },
     ]);
+  });
+
+  it('litellm rota messages (Bedrock/Vertex): base do proxy, alias do modelo e sem fallback', () => {
+    const gw = new LiteLLMGateway({ baseUrl: 'https://llm.corp/', apiKey: 'k', route: 'messages', model: 'claude-opus' });
+    expect(gw.client().baseURL).toBe('https://llm.corp');
+    expect(gw.model('claude-opus-5-5')).toBe('claude-opus');
+    expect(gw.features()).toEqual({ serverSideFallback: false, effort: true, eagerToolStreaming: true, promptCaching: true });
+    const custom = new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k', route: 'messages', features: { effort: false, promptCaching: undefined } });
+    expect(custom.features()).toMatchObject({ effort: false, promptCaching: true });
+    // passthrough continua igual ao padrão.
+    expect(new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k' }).features().serverSideFallback).toBe(true);
+  });
+
+  it('litellm com teamKeys: usa a key do time, lê o gasto com ela e não cria nada', async () => {
+    const fake = fakeLiteLLM();
+    fake.teams.set('corp-checkout', { team_id: 'corp-checkout', spend: 12.5, max_budget: 20, budget_reset_at: '2026-12-01T00:00:00Z' });
+    fake.keys.set('sk-checkout', { team_id: 'corp-checkout', spend: 3 });
+    fake.keys.set('sk-solta', { team_id: null, spend: 1, max_budget: 5 });
+    const gw = new LiteLLMGateway({
+      baseUrl: 'http://x',
+      apiKey: 'sk-portal',
+      teamKeys: { 'checkout-team': 'sk-checkout', 'group:default/payments-team': 'sk-solta', 'data-team': 'sk-invalida' },
+      fetch: fake.fetchImpl,
+    });
+    expect(gw.budgets?.mode).toBe('external');
+    await gw.budgets!.ensureTeam('group:default/checkout-team', 50);
+    expect(fake.calls.filter(c => c.startsWith('POST'))).toEqual([]);
+
+    const checkout = await gw.requestExtras({ ...caller, billingTeam: 'group:default/checkout-team' });
+    expect(checkout.headers).toEqual({ Authorization: 'Bearer sk-checkout' });
+    const semKey = await gw.requestExtras({ ...caller, billingTeam: 'group:default/platform-team' });
+    expect(semKey.headers).toBeUndefined();
+
+    const list = await gw.budgets!.list();
+    expect(list.find(t => t.teamRef === 'group:default/checkout-team')).toEqual({
+      teamRef: 'group:default/checkout-team',
+      spendUsd: 12.5,
+      maxBudgetUsd: 20,
+      resetAt: '2026-12-01T00:00:00Z',
+    });
+    // Key sem team: usa o orçamento da própria key.
+    expect(list.find(t => t.teamRef === 'group:default/payments-team')).toMatchObject({ spendUsd: 1, maxBudgetUsd: 5 });
+    expect(list.find(t => t.teamRef === 'group:default/data-team')?.error).toMatch(/HTTP 404/);
+  });
+
+  it('litellm: não aceita adminKey e teamKeys juntos', () => {
+    expect(
+      () => new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k', adminKey: 'a', teamKeys: { t: 'k' } }),
+    ).toThrow(/não os dois/);
   });
 
   it('litellm: reconhece o bloqueio por orçamento e gera ids de team válidos', () => {
@@ -270,7 +323,7 @@ describe('BudgetService', () => {
       items: [{ kind: 'Group', metadata: { name: 'checkout-team', namespace: 'default' } }],
     }));
     const service = new BudgetService({
-      budgets: { ensureTeam, list: async () => statuses, isBudgetExceeded: () => false },
+      budgets: { mode: 'managed', ensureTeam, list: async () => statuses, isBudgetExceeded: () => false },
       settings: {
         enabled: true,
         monthlyUsd: 50,

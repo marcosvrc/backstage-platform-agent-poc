@@ -244,6 +244,46 @@ As chamadas do agente ao modelo passam por um **gateway**, escolhido em `agent.g
 - **Rastreabilidade:** a tag `request:<id>` é o mesmo ID da auditoria do Backstage.
 - **Painel do LiteLLM:** http://localhost:4000/ui (login com a `LITELLM_MASTER_KEY` de `gateway/.env`).
 
+### LiteLLM corporativo (Claude via AWS Bedrock)
+
+Com o LiteLLM da empresa, o portal usa a rota `/v1/messages`: o formato continua o da Anthropic, e o LiteLLM escolhe o deployment (Bedrock, Vertex AI...) pelo nome do modelo no `model_list`.
+
+**1. Diagnóstico.** Rode contra o LiteLLM da empresa antes de configurar. As chaves vêm do ambiente, para não ficarem no histórico do shell:
+
+```bash
+export LITELLM_URL=https://litellm.empresa.com.br
+export LITELLM_MODEL=claude-opus            # nome do modelo no LiteLLM
+read -rs LITELLM_API_KEY && export LITELLM_API_KEY                       # key do portal
+export LITELLM_TEAM_KEYS="checkout-team=sk-...,platform-team=sk-..."     # opcional
+node scripts/check-litellm.mjs              # --no-calls para não chamar o modelo
+```
+
+O script testa o certificado, a key do portal, os modelos liberados, cada recurso da Messages API (streaming, tools, effort, cache, fallback, metadados) e as keys dos times. Ao final, ele imprime o bloco `agent.gateway` sugerido. São cerca de 8 chamadas mínimas ao modelo, com custo de centavos.
+
+**2. Configuração** (em `app-config.production.yaml` ou no `app-config.local.yaml`, com os segredos vindos do cofre):
+
+```yaml
+agent:
+  gateway:
+    type: litellm
+    baseUrl: https://litellm.empresa.com.br
+    apiKey: ${LITELLM_PORTAL_KEY}       # key do portal: pedidos de quem não tem key de time
+    route: messages                     # /v1/messages (Bedrock/Vertex); o padrão é passthrough
+    model: claude-opus                  # nome no model_list do LiteLLM
+    features:                           # use o resultado do diagnóstico
+      serverSideFallback: false         # recurso só da API da Anthropic
+      effort: true
+      eagerToolStreaming: true
+      promptCaching: true
+    teamKeys:                           # orçamento definido pelos admins do LiteLLM
+      checkout-team: ${LITELLM_KEY_CHECKOUT_TEAM}
+      platform-team: ${LITELLM_KEY_PLATFORM_TEAM}
+```
+
+- **Teams e orçamentos dos admins (`teamKeys`):** o portal não cria nada no LiteLLM. Cada Group do catálogo usa a key que os admins emitiram para o team correspondente, e o portal lê o gasto e o orçamento com ela. O bloqueio ao estourar, os alertas no sino e a aba Orçamento funcionam igual. Times sem key usam a `apiKey` do portal, sem orçamento próprio, mas com a tag do time.
+- **Orçamento gerenciado pelo portal (`adminKey`):** é o modo do ambiente local. Não dá para usar `adminKey` e `teamKeys` juntos.
+- **CA interna:** se o LiteLLM usa um certificado de uma CA da empresa, inicie o portal com `NODE_EXTRA_CA_CERTS=/caminho/ca-corporativa.pem`. O diagnóstico avisa quando o certificado é recusado.
+
 ### Orçamento de IA por time
 
 Cada Group do catálogo tem um **orçamento mensal** no LiteLLM (padrão US$ 50, em `agent.governance.budgets`):
@@ -312,6 +352,8 @@ Cada rodada é publicada no painel de governança, na aba Qualidade. Use `--no-p
     - [x] OAuth no MCP: agentes externos com a identidade do usuário
   - [x] Governança de IA (fase 1): gateway LiteLLM plugável, auditoria, painel e inventário de IA no catálogo
   - [x] Governança de IA (fase 2): orçamento por time no LiteLLM, custo vindo do gateway no painel, alertas no sino
+  - [ ] Rodar os evals com o modelo e fechar o [relatório de go/no-go](docs/relatorio-go-no-go.md) (encerrado: a POC deu lugar à implementação real)
 - [ ] **Implementação real.**
   - [x] SSO e diretório com Keycloak (OIDC + importação de usuários e grupos)
-  - [ ] Rodar os evals com o modelo e fechar o [relatório de go/no-go](docs/relatorio-go-no-go.md)
+  - [x] LiteLLM corporativo: rota `/v1/messages` (Claude via Bedrock), recursos configuráveis, keys de team dos admins e diagnóstico (`scripts/check-litellm.mjs`)
+  - [ ] Segredos, deploy e catálogo real

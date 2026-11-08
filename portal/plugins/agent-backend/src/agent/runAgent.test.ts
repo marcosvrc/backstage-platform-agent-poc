@@ -179,6 +179,39 @@ describe('runAgent: resumo para auditoria', () => {
     expect(requests[0].metadata).toEqual({ user_id: 'u1' });
   });
 
+  it('envia só os recursos que o destino aceita (ex.: Bedrock via LiteLLM)', async () => {
+    const all = setup([{ stop_reason: 'end_turn', content: [] }]);
+    await runAgent({ ...all.base, messages: [{ role: 'user', content: 'oi' }] });
+    expect(all.requests[0]).toMatchObject({
+      model: 'claude-opus-5-5',
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'medium' },
+      cache_control: { type: 'ephemeral' },
+    });
+    expect(all.requests[0].tools[0].eager_input_streaming).toBe(true);
+
+    const bedrock = setup([{ stop_reason: 'end_turn', content: [] }]);
+    await runAgent({
+      ...bedrock.base,
+      messages: [{ role: 'user', content: 'oi' }],
+      model: 'claude-opus',
+      features: {
+        serverSideFallback: false,
+        effort: false,
+        eagerToolStreaming: false,
+        promptCaching: true,
+      },
+    });
+    const req = bedrock.requests[0];
+    expect(req.model).toBe('claude-opus');
+    expect(req).not.toHaveProperty('betas');
+    expect(req).not.toHaveProperty('fallbacks');
+    expect(req).not.toHaveProperty('output_config');
+    expect(req.cache_control).toEqual({ type: 'ephemeral' });
+    expect(req.tools[0]).not.toHaveProperty('eager_input_streaming');
+  });
+
   it('registra aprovação e recusa ao retomar', async () => {
     const { base } = setup([{ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' } as any] }]);
     const summary = await runAgent({

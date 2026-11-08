@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { BackstageCredentials, LoggerService } from '@backstage/backend-plugin-api';
 import type { ActionsService, ActionsServiceAction } from '@backstage/backend-plugin-api/alpha';
 import type { JsonObject } from '@backstage/types';
-import type { GatewayRequestExtras } from '../gateway';
+import { ALL_FEATURES, type GatewayRequestExtras, type ModelFeatures } from '../gateway';
 import { actionsToTools, requiresApproval } from './tools';
 
 type MessageParam = Anthropic.Beta.BetaMessageParam;
@@ -74,6 +74,10 @@ export async function runAgent(opts: {
   signal: AbortSignal;
   /** Campos do gateway (atribuição por usuário/time) adicionados a cada chamada. */
   requestExtras?: GatewayRequestExtras;
+  /** Nome do modelo no destino (ex.: alias no LiteLLM). Padrão: settings.model. */
+  model?: string;
+  /** Recursos da Messages API aceitos pelo destino. Padrão: todos. */
+  features?: ModelFeatures;
   /** Preenchido durante a execução: permite auditar mesmo se o pedido falhar no meio. */
   summary?: RunSummary;
 }): Promise<RunSummary> {
@@ -96,7 +100,10 @@ export async function runAgent(opts: {
   // As ações são listadas com as credenciais do usuário: o agente só enxerga
   // e executa o que o próprio usuário tem permissão para fazer.
   const { actions } = await actionsService.list({ credentials });
-  const { tools, byName } = actionsToTools(actions);
+  const features = opts.features ?? ALL_FEATURES;
+  const { tools, byName } = actionsToTools(actions, {
+    eagerInputStreaming: features.eagerToolStreaming,
+  });
 
   const executeTools = async (
     toolUses: ToolUseBlock[],
@@ -175,15 +182,17 @@ export async function runAgent(opts: {
 
   let jsonRetries = 0;
   for (let iteration = 0; iteration < settings.maxIterations; iteration++) {
+    // Só envia o que o destino aceita (ex.: no Bedrock não há fallback no servidor).
     const stream = client.beta.messages.stream(
       {
-        model: settings.model,
+        model: opts.model ?? settings.model,
         max_tokens: 64000,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: { effort: settings.effort },
+        ...(features.serverSideFallback
+          ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }
+          : {}),
+        ...(features.effort ? { output_config: { effort: settings.effort } } : {}),
         ...(extras.body ?? {}),
-        cache_control: { type: 'ephemeral' },
+        ...(features.promptCaching ? { cache_control: { type: 'ephemeral' as const } } : {}),
         system: settings.systemPrompt,
         tools,
         messages,
