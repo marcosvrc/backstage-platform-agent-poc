@@ -4,7 +4,8 @@ import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import { notificationService } from '@backstage/plugin-notifications-node';
 import { registerPlatformActions } from './actions';
 import { buildSystemPrompt } from './agent/prompt';
-import { createGateway } from './gateway';
+import { agentGatewaysExtensionPoint } from '@internal/backstage-plugin-agent-node';
+import { GatewayRegistry } from './gateway';
 import { BudgetService } from './governance/budgets';
 import { GovernanceStore } from './governance/store';
 import { agentPermissions } from './permissions';
@@ -19,6 +20,10 @@ import { createRouter } from './router';
 export const agentPlugin = createBackendPlugin({
   pluginId: 'agent',
   register(env) {
+    // Conectores de modelo (Anthropic, LiteLLM...) chegam por módulos.
+    const gateways = new GatewayRegistry();
+    env.registerExtensionPoint(agentGatewaysExtensionPoint, gateways);
+
     env.registerInit({
       deps: {
         config: coreServices.rootConfig,
@@ -75,7 +80,7 @@ export const agentPlugin = createBackendPlugin({
             defaultRepoOwner: config.getOptionalString('agent.defaultRepoOwner'),
           }),
         };
-        const gateway = createGateway(config);
+        const gateway = gateways.create(config, logger);
         const store = await GovernanceStore.create(database);
 
         const pricingConfig = config.getOptionalConfig('agent.governance.pricing');
@@ -127,7 +132,7 @@ export const agentPlugin = createBackendPlugin({
           });
         } else if (budgetConfig?.getOptionalBoolean('enabled') && !gateway.budgets) {
           logger.warn(
-            `agent.governance.budgets está ligado, mas o gateway "${gateway.type}" não controla orçamento (no LiteLLM, defina agent.gateway.adminKey).`,
+            `agent.governance.budgets está ligado, mas o conector "${gateway.type}" não controla orçamento com a config atual (ex.: no LiteLLM, adminKey ou teamKeys).`,
           );
         }
 

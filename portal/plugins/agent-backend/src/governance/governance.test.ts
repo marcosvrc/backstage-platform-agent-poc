@@ -1,205 +1,38 @@
 import { TestDatabases, mockServices } from '@backstage/backend-test-utils';
 import { ConfigReader } from '@backstage/config';
-import { createGateway } from '../gateway';
-import { DirectAnthropicGateway } from '../gateway/direct';
-import Anthropic from '@anthropic-ai/sdk';
-import { LiteLLMGateway, liteLLMTeamId } from '../gateway/litellm';
-import type { TeamBudgetStatus } from '../gateway';
+import type {
+  ModelGateway,
+  TeamBudgetStatus,
+} from '@internal/backstage-plugin-agent-node';
+import { GatewayRegistry } from '../gateway';
 import { BudgetService } from './budgets';
 import { GovernanceStore } from './store';
 
-/** LiteLLM falso: guarda teams e keys em memória e registra as chamadas. */
-function fakeLiteLLM() {
-  const teams = new Map<string, any>();
-  const keys = new Map<string, any>();
-  const calls: string[] = [];
-  const json = (status: number, body: unknown) =>
-    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-  const fetchImpl = (async (input: string, init?: RequestInit) => {
-    const url = new URL(input);
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    calls.push(`${init?.method ?? 'GET'} ${url.pathname}`);
-    switch (url.pathname) {
-      case '/team/info': {
-        const t = teams.get(url.searchParams.get('team_id')!);
-        return t ? json(200, { team_info: t }) : json(404, { error: { message: 'Team not found' } });
-      }
-      case '/team/new':
-        teams.set(body.team_id, { ...body, spend: 0 });
-        return json(200, body);
-      case '/team/update':
-        Object.assign(teams.get(body.team_id), body);
-        return json(200, {});
-      case '/team/list':
-        return json(200, [...teams.values()]);
-      case '/key/info': {
-        // Sem ?key=, a própria key do header (como o LiteLLM faz para keys sem admin).
-        const key =
-          url.searchParams.get('key') ??
-          String((init?.headers as Record<string, string>)?.Authorization).replace('Bearer ', '');
-        const k = keys.get(key);
-        return k ? json(200, { info: k }) : json(404, { error: { message: 'Key not found' } });
-      }
-      case '/key/generate':
-        keys.set(body.key, body);
-        return json(200, { key: body.key });
-      default:
-        return json(404, {});
-    }
-  }) as unknown as typeof fetch;
-  return { teams, keys, calls, fetchImpl };
-}
-
-const caller = {
-  userRef: 'user:default/bruno.lima',
-  teams: ['group:default/checkout-team'],
-  requestId: 'req-1',
-};
-
-describe('gateways', () => {
-  it('direct: usa a Anthropic e envia só um id opaco do usuário', () => {
-    const gw = new DirectAnthropicGateway({ apiKey: 'sk-test' });
-    expect(gw.client().baseURL).toBe('https://api.anthropic.com');
-    const { body } = gw.requestExtras(caller);
-    const userId = (body?.metadata as { user_id: string }).user_id;
-    expect(userId).toMatch(/^[0-9a-f]{32}$/);
-    expect(userId).not.toContain('bruno');
-    expect(body).not.toHaveProperty('litellm_metadata');
-  });
-
-  it('litellm: aponta para o pass-through /anthropic e atribui usuário, time e pedido', async () => {
-    const gw = new LiteLLMGateway({
-      baseUrl: 'http://localhost:4000/',
-      apiKey: 'sk-virtual',
-      tags: ['app:backstage-agent'],
-    });
-    expect(gw.client().baseURL).toBe('http://localhost:4000/anthropic');
-    expect(gw.client().apiKey).toBe('sk-virtual');
-    expect((await gw.requestExtras(caller)).body).toEqual({
-      metadata: { user_id: 'user:default/bruno.lima' },
-      litellm_metadata: {
-        user: 'user:default/bruno.lima',
-        tags: ['app:backstage-agent', 'team:checkout-team', 'request:req-1'],
-      },
-    });
-  });
-
-  it('litellm: sendMetadata=false não envia campos próprios do LiteLLM', async () => {
-    const gw = new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k', sendMetadata: false });
-    expect((await gw.requestExtras(caller)).body).not.toHaveProperty('litellm_metadata');
-    // Sem adminKey não há orçamento por time.
-    expect(gw.budgets).toBeUndefined();
-  });
-
-  it('litellm com adminKey: cria team e key por time, e usa a key do time na chamada', async () => {
-    const fake = fakeLiteLLM();
-    const gw = new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k', adminKey: 'admin', fetch: fake.fetchImpl });
-    await gw.budgets!.ensureTeam('group:default/checkout-team', 50);
-    expect(fake.teams.get('backstage-checkout-team')).toMatchObject({
-      team_alias: 'group:default/checkout-team',
-      max_budget: 50,
-      budget_duration: '1mo',
-    });
-    // Idempotente; muda o orçamento quando a config muda.
-    await gw.budgets!.ensureTeam('group:default/checkout-team', 50);
-    expect(fake.calls.filter(c => c === 'POST /team/update')).toHaveLength(0);
-    await gw.budgets!.ensureTeam('group:default/checkout-team', 80);
-    expect(fake.teams.get('backstage-checkout-team').max_budget).toBe(80);
-
-    const extras = await gw.requestExtras({ ...caller, billingTeam: 'group:default/checkout-team' });
-    const key = extras.headers?.Authorization?.replace('Bearer ', '');
-    expect(key).toMatch(/^sk-bs-[0-9a-f]{40}$/);
-    expect(fake.keys.get(key!)).toMatchObject({ team_id: 'backstage-checkout-team' });
-    // Mesma key em um novo processo (derivada da adminKey), sem gerar outra.
-    const gw2 = new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k', adminKey: 'admin', fetch: fake.fetchImpl });
-    const again = await gw2.requestExtras({ ...caller, billingTeam: 'group:default/checkout-team' });
-    expect(again.headers?.Authorization).toBe(`Bearer ${key}`);
-    expect(fake.calls.filter(c => c === 'POST /key/generate')).toHaveLength(1);
-
-    expect(await gw.budgets!.list()).toEqual([
-      { teamRef: 'group:default/checkout-team', spendUsd: 0, maxBudgetUsd: 80, resetAt: undefined },
-    ]);
-  });
-
-  it('litellm rota messages (Bedrock/Vertex): base do proxy, alias do modelo e sem fallback', () => {
-    const gw = new LiteLLMGateway({ baseUrl: 'https://llm.corp/', apiKey: 'k', route: 'messages', model: 'claude-opus' });
-    expect(gw.client().baseURL).toBe('https://llm.corp');
-    expect(gw.model('claude-opus-5-5')).toBe('claude-opus');
-    expect(gw.features()).toEqual({ serverSideFallback: false, effort: true, eagerToolStreaming: true, promptCaching: true });
-    const custom = new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k', route: 'messages', features: { effort: false, promptCaching: undefined } });
-    expect(custom.features()).toMatchObject({ effort: false, promptCaching: true });
-    // passthrough continua igual ao padrão.
-    expect(new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k' }).features().serverSideFallback).toBe(true);
-  });
-
-  it('litellm com teamKeys: usa a key do time, lê o gasto com ela e não cria nada', async () => {
-    const fake = fakeLiteLLM();
-    fake.teams.set('corp-checkout', { team_id: 'corp-checkout', spend: 12.5, max_budget: 20, budget_reset_at: '2026-12-01T00:00:00Z' });
-    fake.keys.set('sk-checkout', { team_id: 'corp-checkout', spend: 3 });
-    fake.keys.set('sk-solta', { team_id: null, spend: 1, max_budget: 5 });
-    const gw = new LiteLLMGateway({
-      baseUrl: 'http://x',
-      apiKey: 'sk-portal',
-      teamKeys: { 'checkout-team': 'sk-checkout', 'group:default/payments-team': 'sk-solta', 'data-team': 'sk-invalida' },
-      fetch: fake.fetchImpl,
-    });
-    expect(gw.budgets?.mode).toBe('external');
-    await gw.budgets!.ensureTeam('group:default/checkout-team', 50);
-    expect(fake.calls.filter(c => c.startsWith('POST'))).toEqual([]);
-
-    const checkout = await gw.requestExtras({ ...caller, billingTeam: 'group:default/checkout-team' });
-    expect(checkout.headers).toEqual({ Authorization: 'Bearer sk-checkout' });
-    const semKey = await gw.requestExtras({ ...caller, billingTeam: 'group:default/platform-team' });
-    expect(semKey.headers).toBeUndefined();
-
-    const list = await gw.budgets!.list();
-    expect(list.find(t => t.teamRef === 'group:default/checkout-team')).toEqual({
-      teamRef: 'group:default/checkout-team',
-      spendUsd: 12.5,
-      maxBudgetUsd: 20,
-      resetAt: '2026-12-01T00:00:00Z',
-    });
-    // Key sem team: usa o orçamento da própria key.
-    expect(list.find(t => t.teamRef === 'group:default/payments-team')).toMatchObject({ spendUsd: 1, maxBudgetUsd: 5 });
-    expect(list.find(t => t.teamRef === 'group:default/data-team')?.error).toMatch(/HTTP 404/);
-  });
-
-  it('litellm: não aceita adminKey e teamKeys juntos', () => {
+describe('GatewayRegistry', () => {
+  it('escolhe o conector pela config e explica quando falta o módulo', () => {
+    const registry = new GatewayRegistry();
+    const fake = (type: string) => ({ type } as unknown as ModelGateway);
+    registry.addGateway('direct', () => fake('direct'));
+    registry.addGateway('litellm', () => fake('litellm'));
+    const logger = mockServices.logger.mock();
+    expect(registry.create(new ConfigReader({}), logger).type).toBe('direct');
     expect(
-      () => new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k', adminKey: 'a', teamKeys: { t: 'k' } }),
-    ).toThrow(/não os dois/);
-  });
-
-  it('litellm: reconhece o bloqueio por orçamento e gera ids de team válidos', () => {
-    const gw = new LiteLLMGateway({ baseUrl: 'http://x', apiKey: 'k', adminKey: 'admin' });
-    const budgetErr = Anthropic.APIError.generate(
-      429,
-      { error: { type: 'budget_exceeded', message: 'Budget has been exceeded!' } },
-      undefined,
-      new Headers(),
-    );
-    const rateErr = Anthropic.APIError.generate(
-      429,
-      { error: { type: 'rate_limit_error', message: 'slow down' } },
-      undefined,
-      new Headers(),
-    );
-    expect(gw.budgets!.isBudgetExceeded(budgetErr)).toBe(true);
-    expect(gw.budgets!.isBudgetExceeded(rateErr)).toBe(false);
-    expect(liteLLMTeamId('group:default/platform-team')).toBe('backstage-platform-team');
-    expect(liteLLMTeamId('group:acme/Data Team')).toBe('backstage-acme-data-team');
-  });
-
-  it('createGateway escolhe pela config e falha com tipo desconhecido', () => {
-    expect(createGateway(new ConfigReader({})).type).toBe('direct');
-    expect(
-      createGateway(
-        new ConfigReader({ agent: { gateway: { type: 'litellm', baseUrl: 'http://x', apiKey: 'k' } } }),
+      registry.create(
+        new ConfigReader({ agent: { gateway: { type: 'litellm' } } }),
+        logger,
       ).type,
     ).toBe('litellm');
     expect(() =>
-      createGateway(new ConfigReader({ agent: { gateway: { type: 'kong' } } })),
-    ).toThrow(/desconhecido.*direct, litellm/);
+      registry.create(
+        new ConfigReader({ agent: { gateway: { type: 'kong' } } }),
+        logger,
+      ),
+    ).toThrow(
+      /"kong" não tem conector instalado. Registrados: direct, litellm/,
+    );
+    expect(() => registry.addGateway('direct', () => fake('x'))).toThrow(
+      /mais de um módulo/,
+    );
   });
 });
 
@@ -232,8 +65,21 @@ describe('GovernanceStore', () => {
       latencyMs: 9000,
       usage: usage(500),
       toolCalls: [
-        { toolUseId: 't1', actionId: 'catalog:get-catalog-entity', readOnly: true, approval: 'auto', status: 'ok', latencyMs: 30 },
-        { toolUseId: 't2', actionId: 'scaffolder:execute-template', readOnly: false, approval: 'pending', status: 'not_executed' },
+        {
+          toolUseId: 't1',
+          actionId: 'catalog:get-catalog-entity',
+          readOnly: true,
+          approval: 'auto',
+          status: 'ok',
+          latencyMs: 30,
+        },
+        {
+          toolUseId: 't2',
+          actionId: 'scaffolder:execute-template',
+          readOnly: false,
+          approval: 'pending',
+          status: 'not_executed',
+        },
       ],
     });
     await store.recordRequest({
@@ -247,7 +93,14 @@ describe('GovernanceStore', () => {
       latencyMs: 4000,
       usage: usage(300),
       toolCalls: [
-        { toolUseId: 't2', actionId: 'scaffolder:execute-template', readOnly: false, approval: 'approved', status: 'ok', latencyMs: 900 },
+        {
+          toolUseId: 't2',
+          actionId: 'scaffolder:execute-template',
+          readOnly: false,
+          approval: 'approved',
+          status: 'ok',
+          latencyMs: 900,
+        },
       ],
     });
     await store.recordRequest({
@@ -265,13 +118,20 @@ describe('GovernanceStore', () => {
     });
 
     const o = await store.overview(7);
-    expect(o.totals).toMatchObject({ requests: 3, users: 2, errors: 1, outputTokens: 800 });
+    expect(o.totals).toMatchObject({
+      requests: 3,
+      users: 2,
+      errors: 1,
+      outputTokens: 800,
+    });
     expect(o.byTeam.map(t => [t.team, t.requests, t.users])).toEqual([
       ['group:default/checkout-team', 2, 1],
       ['group:default/platform-team', 1, 1],
     ]);
     expect(o.approvals).toEqual({ approved: 1, rejected: 0, pending: 1 });
-    expect(o.byAction.find(a => a.actionId === 'scaffolder:execute-template')).toMatchObject({
+    expect(
+      o.byAction.find(a => a.actionId === 'scaffolder:execute-template'),
+    ).toMatchObject({
       calls: 1,
       readOnly: false,
     });
@@ -281,7 +141,9 @@ describe('GovernanceStore', () => {
 
     const writes = await store.audit({ limit: 10, onlyWrites: true });
     expect(writes.map(r => r.id).sort()).toEqual(['a', 'b']);
-    expect(writes.find(r => r.id === 'b')?.toolCalls[0]).toMatchObject({ approval: 'approved' });
+    expect(writes.find(r => r.id === 'b')?.toolCalls[0]).toMatchObject({
+      approval: 'approved',
+    });
   });
 
   it('grava e lista rodadas de evals', async () => {
@@ -298,15 +160,27 @@ describe('GovernanceStore', () => {
       latencyP50Ms: 9300,
     });
     const [run] = await store.evalRuns(5);
-    expect(run).toMatchObject({ total: 45, passed: 42, byHypothesis: { H1: { pass: 15, total: 15 } } });
+    expect(run).toMatchObject({
+      total: 45,
+      passed: 42,
+      byHypothesis: { H1: { pass: 15, total: 15 } },
+    });
   });
 
   it('grava cada alerta de orçamento uma única vez por período', async () => {
     const store = await createStore();
-    const alert = { teamRef: 'group:default/checkout-team', period: '2026-12-01T00:00:00Z', threshold: 0.8, spendUsd: 41, maxBudgetUsd: 50 };
+    const alert = {
+      teamRef: 'group:default/checkout-team',
+      period: '2026-12-01T00:00:00Z',
+      threshold: 0.8,
+      spendUsd: 41,
+      maxBudgetUsd: 50,
+    };
     expect(await store.recordBudgetAlert(alert)).toBe(true);
     expect(await store.recordBudgetAlert(alert)).toBe(false);
-    expect(await store.recordBudgetAlert({ ...alert, threshold: 1 })).toBe(true);
+    expect(await store.recordBudgetAlert({ ...alert, threshold: 1 })).toBe(
+      true,
+    );
     expect(await store.budgetAlerts()).toHaveLength(2);
   });
 });
@@ -320,10 +194,20 @@ describe('BudgetService', () => {
     const ensureTeam = jest.fn(async () => {});
     const send = jest.fn(async () => {});
     const getEntities = jest.fn(async () => ({
-      items: [{ kind: 'Group', metadata: { name: 'checkout-team', namespace: 'default' } }],
+      items: [
+        {
+          kind: 'Group',
+          metadata: { name: 'checkout-team', namespace: 'default' },
+        },
+      ],
     }));
     const service = new BudgetService({
-      budgets: { mode: 'managed', ensureTeam, list: async () => statuses, isBudgetExceeded: () => false },
+      budgets: {
+        mode: 'managed',
+        ensureTeam,
+        list: async () => statuses,
+        isBudgetExceeded: () => false,
+      },
       settings: {
         enabled: true,
         monthlyUsd: 50,
@@ -374,7 +258,9 @@ describe('BudgetService', () => {
 
   it('bloqueia antes da chamada quando o orçamento acabou e alerta como crítico', async () => {
     const { service, send } = await setup([status(50.2)]);
-    expect(await service.prepare('group:default/checkout-team')).toMatchObject({ blocked: true });
+    expect(await service.prepare('group:default/checkout-team')).toMatchObject({
+      blocked: true,
+    });
     await service.checkAlerts([status(50.2)]);
     expect((send.mock.calls[0] as any)[0].payload).toMatchObject({
       title: 'Orçamento de IA esgotado: checkout-team',
@@ -385,7 +271,13 @@ describe('BudgetService', () => {
   it('fica desligado sem gateway com orçamento', async () => {
     const knex = await databases.init('SQLITE_3');
     const service = new BudgetService({
-      settings: { enabled: true, monthlyUsd: 50, teams: {}, thresholds: [1], notify: [] },
+      settings: {
+        enabled: true,
+        monthlyUsd: 50,
+        teams: {},
+        thresholds: [1],
+        notify: [],
+      },
       store: await GovernanceStore.create(mockServices.database({ knex })),
       catalog: {} as any,
       auth: mockServices.auth(),
@@ -393,7 +285,12 @@ describe('BudgetService', () => {
       logger: mockServices.logger.mock(),
     });
     expect(service.active).toBe(false);
-    expect(await service.prepare('group:default/x')).toEqual({ blocked: false });
-    expect(await service.report()).toMatchObject({ supported: false, teams: [] });
+    expect(await service.prepare('group:default/x')).toEqual({
+      blocked: false,
+    });
+    expect(await service.report()).toMatchObject({
+      supported: false,
+      teams: [],
+    });
   });
 });

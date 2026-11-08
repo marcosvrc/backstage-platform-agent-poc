@@ -612,7 +612,7 @@ function BudgetsTab() {
         <Text color="secondary" as="p">
           {data.supported
             ? 'Ligue em agent.governance.budgets.enabled.'
-            : 'O gateway atual não controla orçamento. No LiteLLM, defina agent.gateway.adminKey (o scripts/setup-gateway.sh faz isso) e ligue agent.governance.budgets.enabled.'}
+            : 'O conector de modelo atual não controla orçamento com a configuração atual (ex.: no LiteLLM, defina agent.gateway.adminKey ou agent.gateway.teamKeys) e ligue agent.governance.budgets.enabled. Veja docs/integracoes.md.'}
         </Text>
       </div>
     );

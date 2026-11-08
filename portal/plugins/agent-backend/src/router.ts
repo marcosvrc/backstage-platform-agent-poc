@@ -204,7 +204,7 @@ export async function createRouter(opts: {
         emit({ type: 'error', message: errorMessage });
       } else {
         status = 'error';
-        errorMessage = describeError(err);
+        errorMessage = describeError(err, gateway);
         logger.error('Falha no agente', err as Error);
         emit({ type: 'error', message: errorMessage });
       }
@@ -333,18 +333,18 @@ export async function createRouter(opts: {
   return router;
 }
 
-function describeError(err: unknown): string {
+/** Mensagem genérica; o conector pode dar uma mais específica (gateway.describeError). */
+function describeError(err: unknown, gateway?: ModelGateway): string {
+  const specific = gateway?.describeError?.(err);
+  if (specific) return specific;
   if (err instanceof Anthropic.AuthenticationError) {
-    return 'Credencial do modelo inválida ou ausente. Verifique ANTHROPIC_API_KEY ou a chave do gateway (agent.gateway.apiKey).';
+    return 'Credencial do modelo inválida ou ausente. Verifique a configuração do conector (agent.gateway).';
   }
   if (err instanceof Anthropic.RateLimitError) {
     return 'Limite de requisições atingido. Tente novamente em instantes.';
   }
   if (err instanceof Anthropic.APIError) {
     return `Erro da API (${err.status}): ${err.message}`;
-  }
-  if (err instanceof Error && /api key|apiKey|authentication/i.test(err.message)) {
-    return 'Chave da API da Anthropic ausente. Defina ANTHROPIC_API_KEY antes de iniciar o portal.';
   }
   return err instanceof Error ? err.message : String(err);
 }

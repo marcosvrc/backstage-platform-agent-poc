@@ -26,6 +26,12 @@ Agente (Claude Code / chat no portal)  ──MCP──►  Backstage
 ```
 .
 ├── portal/                  # app Backstage (create-app, Backstage 1.56)
+│   └── plugins/
+│       ├── agent/                            # frontend: chat e painel de governança
+│       ├── agent-backend/                    # agente, ações, governança (sem tecnologia de IA)
+│       ├── agent-node/                       # contratos dos conectores (ModelGateway, orçamento)
+│       ├── agent-backend-module-anthropic/   # conector: API da Anthropic direta
+│       └── agent-backend-module-litellm/     # conector: LiteLLM (passthrough ou /v1/messages)
 ├── catalog/                 # catálogo fictício da "Acme"
 │   ├── all.yaml             # Location de entrada
 │   ├── org/                 # Groups e Users (org.yaml: modo guest; guest.yaml: usuário de dev)
@@ -39,7 +45,7 @@ Agente (Claude Code / chat no portal)  ──MCP──►  Backstage
 ├── keycloak/                # realm "acme" do Keycloak (SSO e diretório)
 ├── personas/                # logins de teste (ana, bruno, diego) para validar permissões
 ├── scripts/                 # start-portal, setup-keycloak, setup-gateway, setup-agent-token, check-permissions
-├── docs/                    # relatório de go/no-go
+├── docs/                    # integrações (como trocar cada tecnologia) e relatório de go/no-go
 ├── docker-compose.yml       # Postgres, LiteLLM e Keycloak locais
 ├── app-config.keycloak.yaml # override: SSO e diretório pelo Keycloak
 └── app-config.sqlite.yaml   # override para rodar sem Docker
@@ -87,6 +93,10 @@ Variações:
 > O `--config` do `backstage-cli` **substitui** o `app-config.yaml` em vez de somar. Por isso use o script, que monta a lista completa (`app-config.yaml` + `app-config.local.yaml` + overrides).
 
 > O TechDocs está configurado com `runIn: docker`, então a renderização das docs também precisa do Docker rodando.
+
+## Integrações
+
+Cada tecnologia externa (modelo de IA, SSO, diretório, banco, auditoria, alertas) entra por um ponto de troca. A lógica do portal não cita a tecnologia. O mapa e o passo a passo para trocar cada uma estão em **[docs/integracoes.md](docs/integracoes.md)**.
 
 ## Login corporativo (SSO com Keycloak)
 
@@ -304,12 +314,7 @@ agent:
       notify: [group:default/platform-team]
 ```
 
-**Trocar de gateway** (Kong, Portkey, Envoy etc.):
-1. Implemente a interface `ModelGateway` em `portal/plugins/agent-backend/src/gateway/<nome>.ts`. São quatro métodos: o cliente do SDK, a atribuição por chamada, a verificação de saúde e a descrição. O orçamento (`budgets`) é opcional.
-2. Registre a nova classe em `GATEWAY_FACTORIES` (`gateway/index.ts`).
-3. Mude `agent.gateway.type`.
-
-O resto do agente não muda.
+**Trocar de gateway** (Kong, Portkey, Envoy etc.): cada gateway é um **conector**, ou seja, um módulo do backend que registra uma implementação de `ModelGateway`. Os conectores atuais são `agent-backend-module-litellm` e `agent-backend-module-anthropic`. Para outro, crie um módulo, adicione-o no backend e mude `agent.gateway.type`. O plugin do agente não muda. O passo a passo está em [docs/integracoes.md](docs/integracoes.md).
 
 ### Painel "Governança de IA"
 
@@ -356,4 +361,5 @@ Cada rodada é publicada no painel de governança, na aba Qualidade. Use `--no-p
 - [ ] **Implementação real.**
   - [x] SSO e diretório com Keycloak (OIDC + importação de usuários e grupos)
   - [x] LiteLLM corporativo: rota `/v1/messages` (Claude via Bedrock), recursos configuráveis, keys de team dos admins e diagnóstico (`scripts/check-litellm.mjs`)
+  - [x] Conectores: modelo de IA em módulos (`agent-node` + módulos LiteLLM e Anthropic), SSO por OIDC configurável e [mapa de integrações](docs/integracoes.md)
   - [ ] Segredos, deploy e catálogo real

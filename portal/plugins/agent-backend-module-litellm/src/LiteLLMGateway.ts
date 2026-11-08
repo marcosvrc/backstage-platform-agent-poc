@@ -9,7 +9,7 @@ import {
   type ModelFeatures,
   type ModelGateway,
   type TeamBudgetStatus,
-} from './types';
+} from '@internal/backstage-plugin-agent-node';
 
 export interface LiteLLMGatewayOptions {
   /** URL do proxy, ex.: http://localhost:4000 */
@@ -112,7 +112,10 @@ export class LiteLLMGateway implements ModelGateway {
     return (this.#client ??= new Anthropic({
       apiKey: this.opts.apiKey,
       // O SDK acrescenta /v1/messages: na rota messages, a base é o próprio proxy.
-      baseURL: this.#route === 'messages' ? this.#baseUrl : `${this.#baseUrl}/anthropic`,
+      baseURL:
+        this.#route === 'messages'
+          ? this.#baseUrl
+          : `${this.#baseUrl}/anthropic`,
     }));
   }
 
@@ -123,8 +126,12 @@ export class LiteLLMGateway implements ModelGateway {
   features(): ModelFeatures {
     // O fallback no servidor é da API da Anthropic; fora do pass-through, fica desligado.
     const defaults =
-      this.#route === 'messages' ? { ...ALL_FEATURES, serverSideFallback: false } : ALL_FEATURES;
-    const overrides = Object.entries(this.opts.features ?? {}).filter(([, v]) => v !== undefined);
+      this.#route === 'messages'
+        ? { ...ALL_FEATURES, serverSideFallback: false }
+        : ALL_FEATURES;
+    const overrides = Object.entries(this.opts.features ?? {}).filter(
+      ([, v]) => v !== undefined,
+    );
     return { ...defaults, ...Object.fromEntries(overrides) };
   }
 
@@ -148,9 +155,15 @@ export class LiteLLMGateway implements ModelGateway {
     // Com orçamento por time, a chamada usa a virtual key do time (o LiteLLM cobra e bloqueia nela).
     // O SDK envia a credencial em Authorization: Bearer; o LiteLLM lê esse header primeiro.
     if (this.budgets?.mode === 'managed' && caller.billingTeam) {
-      return { body, headers: { Authorization: `Bearer ${await this.#teamKey(caller.billingTeam)}` } };
+      return {
+        body,
+        headers: {
+          Authorization: `Bearer ${await this.#teamKey(caller.billingTeam)}`,
+        },
+      };
     }
-    const externalKey = caller.billingTeam && this.#externalKey(caller.billingTeam);
+    const externalKey =
+      caller.billingTeam && this.#externalKey(caller.billingTeam);
     if (externalKey) {
       return { body, headers: { Authorization: `Bearer ${externalKey}` } };
     }
@@ -158,14 +171,31 @@ export class LiteLLMGateway implements ModelGateway {
     return { body };
   }
 
+  describeError(err: unknown): string | undefined {
+    if (err instanceof Anthropic.AuthenticationError) {
+      return 'O LiteLLM recusou a credencial do portal ou do time. Verifique agent.gateway.apiKey e agent.gateway.teamKeys (ou a adminKey).';
+    }
+    if (err instanceof Anthropic.NotFoundError && this.#route === 'messages') {
+      return `O LiteLLM não encontrou o modelo "${
+        this.opts.model ?? 'configurado'
+      }". Confira agent.gateway.model com scripts/check-litellm.mjs.`;
+    }
+    return undefined;
+  }
+
   async health(): Promise<GatewayHealth> {
     try {
       const res = await this.#fetch(`${this.#baseUrl}/health/liveliness`, {
         signal: AbortSignal.timeout(3000),
       });
-      return res.ok ? { ok: true } : { ok: false, detail: `HTTP ${res.status}` };
+      return res.ok
+        ? { ok: true }
+        : { ok: false, detail: `HTTP ${res.status}` };
     } catch (err) {
-      return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        detail: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 
@@ -175,7 +205,12 @@ export class LiteLLMGateway implements ModelGateway {
     return this.opts.fetch ?? fetch;
   }
 
-  async #api(method: 'GET' | 'POST', path: string, body?: unknown, key = this.opts.adminKey) {
+  async #api(
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown,
+    key = this.opts.adminKey,
+  ) {
     const res = await this.#fetch(`${this.#baseUrl}${path}`, {
       method,
       headers: {
@@ -197,7 +232,10 @@ export class LiteLLMGateway implements ModelGateway {
 
   async #ensureTeam(teamRef: string, monthlyBudgetUsd: number): Promise<void> {
     const teamId = liteLLMTeamId(teamRef);
-    const info = await this.#api('GET', `/team/info?team_id=${encodeURIComponent(teamId)}`);
+    const info = await this.#api(
+      'GET',
+      `/team/info?team_id=${encodeURIComponent(teamId)}`,
+    );
     if (info.status === 404) {
       const created = await this.#api('POST', '/team/new', {
         team_id: teamId,
@@ -222,13 +260,17 @@ export class LiteLLMGateway implements ModelGateway {
 
   async #listTeams(): Promise<TeamBudgetStatus[]> {
     const res = await this.#api('GET', '/team/list');
-    if (!res.ok || !Array.isArray(res.json)) throw adminError('listar os teams', '*', res);
+    if (!res.ok || !Array.isArray(res.json))
+      throw adminError('listar os teams', '*', res);
     return (res.json as any[])
-      .filter(t => t.metadata?.source === SOURCE && typeof t.team_alias === 'string')
+      .filter(
+        t => t.metadata?.source === SOURCE && typeof t.team_alias === 'string',
+      )
       .map(t => ({
         teamRef: t.team_alias,
         spendUsd: Number(t.spend ?? 0),
-        maxBudgetUsd: typeof t.max_budget === 'number' ? t.max_budget : undefined,
+        maxBudgetUsd:
+          typeof t.max_budget === 'number' ? t.max_budget : undefined,
         resetAt: t.budget_reset_at ?? undefined,
       }));
   }
@@ -269,7 +311,8 @@ export class LiteLLMGateway implements ModelGateway {
           return {
             teamRef,
             spendUsd: Number(info.spend ?? 0),
-            maxBudgetUsd: typeof info.max_budget === 'number' ? info.max_budget : undefined,
+            maxBudgetUsd:
+              typeof info.max_budget === 'number' ? info.max_budget : undefined,
             resetAt: info.budget_reset_at ?? undefined,
           };
         } catch (err) {
@@ -300,10 +343,17 @@ export class LiteLLMGateway implements ModelGateway {
   }
 
   async #ensureTeamKey(teamRef: string, teamId: string): Promise<string> {
-    const key = `sk-bs-${createHmac('sha256', this.opts.adminKey!).update(teamId).digest('hex').slice(0, 40)}`;
-    const info = await this.#api('GET', `/key/info?key=${encodeURIComponent(key)}`);
+    const key = `sk-bs-${createHmac('sha256', this.opts.adminKey!)
+      .update(teamId)
+      .digest('hex')
+      .slice(0, 40)}`;
+    const info = await this.#api(
+      'GET',
+      `/key/info?key=${encodeURIComponent(key)}`,
+    );
     if (info.ok) return key;
-    if (info.status !== 404) throw adminError('consultar a key do team', teamId, info);
+    if (info.status !== 404)
+      throw adminError('consultar a key do team', teamId, info);
 
     const alias = `backstage-agent:${teamId}`;
     const generate = () =>
@@ -328,16 +378,30 @@ export class LiteLLMGateway implements ModelGateway {
 export function liteLLMTeamId(teamRef: string): string {
   const m = /^(?:group:)?(?:([^/]+)\/)?(.+)$/.exec(teamRef);
   const namespace = m?.[1] && m[1] !== 'default' ? `${m[1]}-` : '';
-  return `backstage-${namespace}${m?.[2] ?? teamRef}`.toLowerCase().replace(/[^a-z0-9_.-]/g, '-');
+  return `backstage-${namespace}${m?.[2] ?? teamRef}`
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, '-');
 }
 
 /** O LiteLLM responde 429 com type budget_exceeded quando o orçamento estoura. */
 export function isBudgetExceededError(err: unknown): boolean {
   if (!(err instanceof Anthropic.APIError) || err.status !== 429) return false;
   const body = err.error as { error?: { type?: string } } | undefined;
-  return body?.error?.type === 'budget_exceeded' || /budget has been exceeded|budget_exceeded/i.test(err.message);
+  return (
+    body?.error?.type === 'budget_exceeded' ||
+    /budget has been exceeded|budget_exceeded/i.test(err.message)
+  );
 }
 
-function adminError(what: string, teamId: string, res: { status: number; text: string }) {
-  return new Error(`LiteLLM: falha ao ${what} ${teamId} (HTTP ${res.status}): ${res.text.slice(0, 200)}`);
+function adminError(
+  what: string,
+  teamId: string,
+  res: { status: number; text: string },
+) {
+  return new Error(
+    `LiteLLM: falha ao ${what} ${teamId} (HTTP ${res.status}): ${res.text.slice(
+      0,
+      200,
+    )}`,
+  );
 }

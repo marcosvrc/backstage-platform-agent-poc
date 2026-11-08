@@ -1,61 +1,50 @@
+import type { LoggerService } from '@backstage/backend-plugin-api';
 import type { Config } from '@backstage/config';
-import { DirectAnthropicGateway } from './direct';
-import { LiteLLMGateway } from './litellm';
-import type { ModelGateway } from './types';
-
-export type {
-  CallerContext,
-  GatewayBudgets,
-  GatewayHealth,
-  GatewayRequestExtras,
-  ModelFeatures,
+import type {
+  AgentGatewaysExtensionPoint,
   ModelGateway,
-  TeamBudgetStatus,
-} from './types';
-export { ALL_FEATURES } from './types';
+  ModelGatewayFactory,
+} from '@internal/backstage-plugin-agent-node';
+
+export {
+  ALL_FEATURES,
+  type CallerContext,
+  type GatewayBudgets,
+  type GatewayHealth,
+  type GatewayRequestExtras,
+  type ModelFeatures,
+  type ModelGateway,
+  type TeamBudgetStatus,
+} from '@internal/backstage-plugin-agent-node';
 
 /**
- * Gateways disponíveis. Para adicionar outro (Kong, Portkey, Envoy...),
- * crie a classe implementando ModelGateway e registre aqui.
+ * Gateways registrados pelos módulos de conector (agentGatewaysExtensionPoint).
+ * O plugin do agente não conhece nenhuma tecnologia: escolhe pelo `agent.gateway.type`.
  */
-const GATEWAY_FACTORIES: Record<string, (config: Config) => ModelGateway> = {
-  direct: config =>
-    new DirectAnthropicGateway({ apiKey: config.getOptionalString('agent.anthropicApiKey') }),
-  litellm: config => {
-    const route = config.getOptionalString('agent.gateway.route') ?? 'passthrough';
-    if (route !== 'passthrough' && route !== 'messages') {
-      throw new Error(`agent.gateway.route "${route}" inválida. Opções: passthrough, messages`);
-    }
-    const features = config.getOptionalConfig('agent.gateway.features');
-    const teamKeys = config.getOptionalConfig('agent.gateway.teamKeys');
-    return new LiteLLMGateway({
-      baseUrl: config.getString('agent.gateway.baseUrl'),
-      apiKey: config.getString('agent.gateway.apiKey'),
-      route,
-      model: config.getOptionalString('agent.gateway.model'),
-      features: features && {
-        serverSideFallback: features.getOptionalBoolean('serverSideFallback'),
-        effort: features.getOptionalBoolean('effort'),
-        eagerToolStreaming: features.getOptionalBoolean('eagerToolStreaming'),
-        promptCaching: features.getOptionalBoolean('promptCaching'),
-      },
-      adminKey: config.getOptionalString('agent.gateway.adminKey'),
-      teamKeys:
-        teamKeys &&
-        Object.fromEntries(teamKeys.keys().map(team => [team, teamKeys.getString(team)])),
-      tags: config.getOptionalStringArray('agent.gateway.tags'),
-      sendMetadata: config.getOptionalBoolean('agent.gateway.sendMetadata'),
-    });
-  },
-};
+export class GatewayRegistry implements AgentGatewaysExtensionPoint {
+  readonly #factories = new Map<string, ModelGatewayFactory>();
 
-export function createGateway(config: Config): ModelGateway {
-  const type = config.getOptionalString('agent.gateway.type') ?? 'direct';
-  const factory = GATEWAY_FACTORIES[type];
-  if (!factory) {
-    throw new Error(
-      `agent.gateway.type "${type}" desconhecido. Opções: ${Object.keys(GATEWAY_FACTORIES).join(', ')}`,
-    );
+  addGateway(type: string, factory: ModelGatewayFactory): void {
+    if (this.#factories.has(type)) {
+      throw new Error(`Gateway "${type}" registrado por mais de um módulo`);
+    }
+    this.#factories.set(type, factory);
   }
-  return factory(config);
+
+  get types(): string[] {
+    return [...this.#factories.keys()].sort();
+  }
+
+  create(config: Config, logger: LoggerService): ModelGateway {
+    const type = config.getOptionalString('agent.gateway.type') ?? 'direct';
+    const factory = this.#factories.get(type);
+    if (!factory) {
+      const available = this.types.join(', ') || 'nenhum';
+      throw new Error(
+        `agent.gateway.type "${type}" não tem conector instalado. Registrados: ${available}. ` +
+          'Adicione o módulo correspondente no backend (ex.: @internal/backstage-plugin-agent-backend-module-litellm).',
+      );
+    }
+    return factory({ config, logger });
+  }
 }

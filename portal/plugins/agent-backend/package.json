@@ -34,6 +34,7 @@
     "@backstage/plugin-notifications-node": "^0.2.31",
     "@backstage/plugin-permission-common": "^0.9.12",
     "@backstage/types": "^1.2.2",
+    "@internal/backstage-plugin-agent-node": "^0.1.0",
     "express": "^4.14.0",
     "express-promise-router": "^4.1.0",
     "zod": "^3.25.76 || ^4.0.0"

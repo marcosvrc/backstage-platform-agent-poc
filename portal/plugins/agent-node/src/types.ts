@@ -47,14 +47,15 @@ export interface GatewayHealth {
 }
 
 /**
- * Camada entre o agente e o provedor do modelo.
+ * Conector entre o agente e o provedor do modelo.
  *
  * O agente sempre fala a Messages API da Anthropic (SDK oficial). Um gateway
  * decide para onde a chamada vai (direto na Anthropic, LiteLLM, outro proxy),
  * com qual credencial, e como cada chamada é atribuída ao usuário e ao time.
  *
- * Para trocar de gateway: implemente esta interface em um arquivo novo e
- * registre-o em `GATEWAY_FACTORIES` (gateway/index.ts). Nada mais muda.
+ * Para um gateway novo: crie um módulo de backend (pluginId `agent`) que
+ * registra a fábrica em `agentGatewaysExtensionPoint`, e selecione-o em
+ * `agent.gateway.type`. O plugin do agente não muda.
  */
 export interface ModelGateway {
   /** Identificador do tipo, ex.: 'direct', 'litellm'. */
@@ -68,9 +69,16 @@ export interface ModelGateway {
   /** Recursos da Messages API aceitos pelo destino. */
   features(): ModelFeatures;
   /** Atribuição (usuário, time, tags) e credencial para uma chamada. */
-  requestExtras(caller: CallerContext): GatewayRequestExtras | Promise<GatewayRequestExtras>;
+  requestExtras(
+    caller: CallerContext,
+  ): GatewayRequestExtras | Promise<GatewayRequestExtras>;
   /** Verificação de saúde para o painel. */
   health(): Promise<GatewayHealth>;
+  /**
+   * Mensagem em português para erros conhecidos do destino (credencial, limite...).
+   * Retorne undefined para usar a mensagem genérica do agente.
+   */
+  describeError?(err: unknown): string | undefined;
   /**
    * Orçamento por time (opcional). Gateways sem esse recurso não implementam;
    * o painel então mostra só o custo estimado.

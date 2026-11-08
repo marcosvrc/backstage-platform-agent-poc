@@ -28,33 +28,18 @@ Todas são `readOnly` e usam as credenciais de quem chama. O conteúdo do TechDo
 
 O evento `done` do `/chat` inclui `usage` (chamadas ao modelo e tokens), usado pelo runner de `evals/`.
 
-## Gateway do modelo (`src/gateway`)
+## Conectores de modelo
 
-O agente sempre fala a Messages API da Anthropic pelo SDK oficial. A interface `ModelGateway` decide:
-- para onde a chamada vai;
-- com qual credencial;
-- como cada chamada é atribuída ao usuário e ao time.
+O agente sempre fala a Messages API da Anthropic pelo SDK oficial. **Para onde** a chamada vai, com qual credencial e como ela é atribuída ao usuário e ao time fica a cargo de um **conector** (`ModelGateway`), registrado por um módulo no ponto de extensão `agentGatewaysExtensionPoint` (`@internal/backstage-plugin-agent-node`). Este plugin não conhece nenhuma tecnologia: escolhe o conector por `agent.gateway.type`.
 
-| Tipo | Classe | Config |
-|---|---|---|
-| `direct` | `DirectAnthropicGateway` | `agent.anthropicApiKey` ou `ANTHROPIC_API_KEY` |
-| `litellm` | `LiteLLMGateway` | `agent.gateway.{baseUrl, apiKey, route, model, features, adminKey, teamKeys, tags, sendMetadata}` |
+| `agent.gateway.type` | Módulo |
+|---|---|
+| `direct` (padrão) | `@internal/backstage-plugin-agent-backend-module-anthropic` |
+| `litellm` | `@internal/backstage-plugin-agent-backend-module-litellm` |
 
-Para outro gateway, implemente `ModelGateway` (`describe`, `client`, `model`, `features`, `requestExtras`, `health`) e registre a classe em `GATEWAY_FACTORIES`.
+O conector também informa o nome do modelo no destino (`model`), os recursos aceitos (`features`), mensagens para erros conhecidos (`describeError`) e, opcionalmente, o orçamento por time (`budgets`, nos modos `managed` ou `external`). Conectores sem `budgets` continuam funcionando; o painel mostra só o custo estimado.
 
-- **`model(logical)`**: nome do modelo no destino (no LiteLLM, o alias do `model_list`).
-- **`features()`**: recursos da Messages API aceitos pelo destino (`serverSideFallback`, `effort`, `eagerToolStreaming`, `promptCaching`). O agente só envia o que estiver ligado. No LiteLLM, a rota `messages` (Bedrock, Vertex) desliga o fallback por padrão.
-
-**Orçamento (opcional):** um gateway que controla gasto expõe `budgets` (`GatewayBudgets`: `mode`, `ensureTeam`, `list`, `isBudgetExceeded`).
-
-No LiteLLM com `teamKeys` (modo `external`), os teams e orçamentos são dos admins do LiteLLM: o pedido sai com a key do time, e o gasto é lido com a mesma key (`/key/info` e `/team/info`, sem permissão de admin).
-
-No LiteLLM com `adminKey` (modo `managed`):
-- cada Group do catálogo vira um *team* (`backstage-<nome>`) com `max_budget` e `budget_duration: 1mo`;
-- cada team ganha uma virtual key (`backstage-agent:<team>`), derivada da `adminKey` por HMAC, então não precisa ser guardada;
-- o pedido sai com a key do time que paga, no header `Authorization`, e o LiteLLM recusa com HTTP 429 `budget_exceeded` quando o orçamento estoura.
-
-Gateways sem `budgets` continuam funcionando; o painel mostra só o custo estimado.
+Para criar um conector, veja [docs/integracoes.md](../../../docs/integracoes.md).
 
 ## Governança (`src/governance`, rotas `/governance/*`)
 

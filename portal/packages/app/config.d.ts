@@ -7,6 +7,19 @@ export interface Config {
        * @visibility frontend
        */
       providers?: Array<'oidc' | 'guest'>;
+      /** Textos do botão de SSO (oidc). */
+      oidc?: {
+        /**
+         * Padrão: Login corporativo
+         * @visibility frontend
+         */
+        title?: string;
+        /**
+         * Padrão: Entre com sua conta da empresa
+         * @visibility frontend
+         */
+        message?: string;
+      };
     };
   };
 }

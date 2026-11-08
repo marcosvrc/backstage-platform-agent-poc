@@ -49,6 +49,8 @@
     "@backstage/plugin-techdocs-backend": "^2.4.0",
     "@backstage/plugin-user-settings-backend": "^0.4.8",
     "@internal/backstage-plugin-agent-backend": "workspace:^",
+    "@internal/backstage-plugin-agent-backend-module-anthropic": "^0.1.0",
+    "@internal/backstage-plugin-agent-backend-module-litellm": "^0.1.0",
     "app": "link:../app",
     "better-sqlite3": "^12.0.0",
     "node-gyp": "^10.0.0",

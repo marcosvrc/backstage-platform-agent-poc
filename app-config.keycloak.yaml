@@ -10,6 +10,9 @@
 app:
   signIn:
     providers: [oidc]
+    oidc:
+      title: Login corporativo
+      message: Entre com sua conta da Acme (Keycloak)
 
 auth:
   # O provedor OIDC guarda o estado do login (nonce, PKCE) numa sessão assinada.

@@ -1,0 +1,42 @@
+{
+  "name": "@internal/backstage-plugin-agent-backend-module-anthropic",
+  "description": "Conector do Platform Agent para a API da Anthropic, sem gateway",
+  "version": "0.1.0",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "publishConfig": {
+    "access": "public",
+    "main": "dist/index.cjs.js",
+    "types": "dist/index.d.ts"
+  },
+  "backstage": {
+    "role": "backend-plugin-module",
+    "pluginId": "agent",
+    "pluginPackage": "@internal/backstage-plugin-agent-backend"
+  },
+  "scripts": {
+    "build": "backstage-cli package build",
+    "lint": "backstage-cli package lint",
+    "test": "backstage-cli package test",
+    "clean": "backstage-cli package clean",
+    "prepack": "backstage-cli package prepack",
+    "postpack": "backstage-cli package postpack"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1",
+    "@backstage/backend-plugin-api": "^1.11.0",
+    "@backstage/config": "^1.3.10",
+    "@internal/backstage-plugin-agent-node": "^0.1.0"
+  },
+  "devDependencies": {
+    "@backstage/backend-test-utils": "^1.11.8",
+    "@backstage/cli": "^0.36.7"
+  },
+  "files": [
+    "dist",
+    "config.d.ts"
+  ],
+  "configSchema": "config.d.ts"
+}

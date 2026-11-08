@@ -74,4 +74,7 @@ backend.add(import('@backstage/plugin-signals-backend'));
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
 backend.add(import('@internal/backstage-plugin-agent-backend'));
+// Conectores de modelo do agente (agent.gateway.type escolhe qual usar).
+backend.add(import('@internal/backstage-plugin-agent-backend-module-anthropic'));
+backend.add(import('@internal/backstage-plugin-agent-backend-module-litellm'));
 backend.start();

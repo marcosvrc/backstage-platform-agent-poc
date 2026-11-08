@@ -14,7 +14,11 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { SignInPageBlueprint } from '@backstage/plugin-app-react';
 
-/** Login corporativo via OIDC (Keycloak). Provider "oidc" no auth-backend. */
+/**
+ * Login corporativo via OIDC (provider "oidc" no auth-backend). Funciona com
+ * qualquer provedor OIDC: Keycloak, Entra ID, Okta, Google... O provedor é
+ * escolhido só na configuração (veja app-config.keycloak.yaml).
+ */
 export const oidcAuthApiRef = createApiRef<
   OpenIdConnectApi & ProfileInfoApi & BackstageIdentityApi & SessionApi
 >().with({ id: 'auth.oidc' });
@@ -34,7 +38,11 @@ const oidcAuthApi = ApiBlueprint.make({
           configApi,
           discoveryApi,
           oauthRequestApi,
-          provider: { id: 'oidc', title: 'Keycloak', icon: () => null },
+          provider: {
+            id: 'oidc',
+            title: configApi.getOptionalString('app.signIn.oidc.title') ?? 'Login corporativo',
+            icon: () => null,
+          },
           environment: configApi.getOptionalString('auth.environment'),
           defaultScopes: ['openid', 'profile', 'email', 'offline_access'],
         }),
@@ -43,7 +51,7 @@ const oidcAuthApi = ApiBlueprint.make({
 
 /**
  * Tela de login. Os provedores vêm de `app.signIn.providers`:
- * - `oidc`: SSO corporativo (Keycloak). Entra automaticamente se já houver sessão.
+ * - `oidc`: SSO corporativo (qualquer provedor OIDC). Entra automaticamente se já houver sessão.
  * - `guest`: só para desenvolvimento local (o backend recusa guest em produção).
  */
 const signInPage = SignInPageBlueprint.make({
@@ -57,8 +65,10 @@ const signInPage = SignInPageBlueprint.make({
           id === 'oidc'
             ? {
                 id: 'oidc-auth-provider',
-                title: 'Login corporativo',
-                message: 'Entre com sua conta da empresa (Keycloak)',
+                title: configApi.getOptionalString('app.signIn.oidc.title') ?? 'Login corporativo',
+                message:
+                  configApi.getOptionalString('app.signIn.oidc.message') ??
+                  'Entre com sua conta da empresa',
                 apiRef: oidcAuthApiRef,
               }
             : ('guest' as const),
