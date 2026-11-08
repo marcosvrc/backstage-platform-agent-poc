@@ -7,7 +7,9 @@
 # 2. Cria o banco "litellm" no Postgres da POC
 # 3. Sobe o container do LiteLLM (porta 4000)
 # 4. Emite uma virtual key para o portal (key_alias backstage-agent)
-# 5. Grava agent.gateway em portal/app-config.local.yaml
+# 5. Emite uma key de administração para o portal (usuário backstage-portal,
+#    papel proxy_admin): o portal cria um team por time do catálogo, com orçamento
+# 6. Grava agent.gateway em portal/app-config.local.yaml
 #
 # Depois, reinicie o portal: ./scripts/start-portal.sh
 set -euo pipefail
@@ -81,7 +83,22 @@ else
   echo "Emitida a virtual key do portal (backstage-agent)." >&2
 fi
 
-# 5. app-config.local.yaml -> agent.gateway
+# 5. Key de administração do portal (orçamento por time). Não é a master key: pode ser revogada sozinha.
+ADMIN_KEY="$(yaml_get agent.gateway.adminKey)"
+if [ -n "$ADMIN_KEY" ] && curl -sf "$URL/team/list" -H "Authorization: Bearer $ADMIN_KEY" >/dev/null; then
+  echo "Key de administração do portal já configurada." >&2
+else
+  admin_api() { curl -sf "$URL$1" -H "Authorization: Bearer $MASTER_KEY" -H 'Content-Type: application/json' "${@:2}"; }
+  admin_api "/user/info?user_id=backstage-portal" >/dev/null 2>&1 ||
+    admin_api /user/new -d '{"user_id":"backstage-portal","user_role":"proxy_admin","auto_create_key":false}' >/dev/null
+  admin_api /key/delete -d '{"key_aliases":["backstage-admin"]}' >/dev/null 2>&1 || true
+  ADMIN_KEY="$(admin_api /key/generate \
+    -d '{"user_id":"backstage-portal","key_alias":"backstage-admin","metadata":{"app":"backstage-platform-agent","purpose":"team budgets"}}' |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).key))')"
+  echo "Emitida a key de administração do portal (backstage-admin)." >&2
+fi
+
+# 6. app-config.local.yaml -> agent.gateway
 node -e '
   const fs = require("fs");
   const Y = require(process.argv[1] + "/portal/node_modules/yaml");
@@ -91,10 +108,11 @@ node -e '
     type: "litellm",
     baseUrl: process.argv[3],
     apiKey: process.argv[4],
+    adminKey: process.argv[5],
     tags: ["app:backstage-agent"],
   }));
   fs.writeFileSync(file, doc.toString(), { mode: 0o600 });
-' "$ROOT" "$LOCAL_CFG" "$URL" "$PORTAL_KEY"
+' "$ROOT" "$LOCAL_CFG" "$URL" "$PORTAL_KEY" "$ADMIN_KEY"
 
 echo
 echo "Pronto. LiteLLM em $URL (painel: $URL/ui, login com a LITELLM_MASTER_KEY de gateway/.env)."

@@ -18,6 +18,7 @@ import { z } from 'zod/v3';
 import { AgentEvent, AgentSettings, RunSummary, runAgent } from './agent/runAgent';
 import { requiresApproval } from './agent/tools';
 import type { ModelGateway } from './gateway';
+import type { BudgetService } from './governance/budgets';
 import type { GovernanceStore, RequestRecord } from './governance/store';
 import { agentEvalsPublishPermission, agentGovernanceReadPermission } from './permissions';
 
@@ -50,6 +51,23 @@ const evalRunSchema = z.object({
   createdAt: z.string().datetime().optional(),
 });
 
+class BudgetExceeded extends Error {
+  constructor(
+    readonly teamRef: string,
+    readonly resetAt?: string,
+  ) {
+    super(`Orçamento de IA esgotado para ${teamRef}`);
+  }
+}
+
+function budgetMessage(teamRef: string | undefined, resetAt?: string): string {
+  const team = teamRef?.replace(/^group:(default\/)?/, '') ?? 'seu time';
+  const until = resetAt
+    ? ` até ${new Date(resetAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}`
+    : ' até o próximo período';
+  return `O orçamento mensal de IA do time ${team} acabou, então o agente está pausado para o time${until}. Se precisar antes, fale com o time de plataforma.`;
+}
+
 export interface GovernanceSettings {
   /** Grava o início de cada pergunta na auditoria (desligado por padrão). */
   storePrompts: boolean;
@@ -70,10 +88,21 @@ export async function createRouter(opts: {
   settings: AgentSettings;
   gateway: ModelGateway;
   store: GovernanceStore;
+  budgets: BudgetService;
   governance: GovernanceSettings;
 }): Promise<express.Router> {
-  const { httpAuth, userInfo, permissions, auditor, actionsService, logger, settings, gateway, store } =
-    opts;
+  const {
+    httpAuth,
+    userInfo,
+    permissions,
+    auditor,
+    actionsService,
+    logger,
+    settings,
+    gateway,
+    store,
+    budgets,
+  } = opts;
 
   const authorize = async (
     credentials: BackstageCredentials<BackstageUserPrincipal>,
@@ -102,6 +131,8 @@ export async function createRouter(opts: {
     const { ownershipEntityRefs } = await userInfo.getUserInfo(credentials);
     const teams = ownershipEntityRefs.filter(r => r.startsWith('group:'));
     const userRef = credentials.principal.userEntityRef;
+    // Quem paga: o primeiro time do usuário (orçamento por time no gateway).
+    const billingTeam = budgets.active ? teams[0] : undefined;
     const requestId = randomUUID();
     const startedAt = Date.now();
     const kind = parsed.data.approvals ? 'resume' : 'message';
@@ -133,9 +164,22 @@ export async function createRouter(opts: {
     let status: RequestRecord['status'] = 'ok';
     let errorMessage: string | undefined;
     try {
+      const caller = { userRef, teams, requestId, billingTeam };
+      if (billingTeam) {
+        const check = await budgets.prepare(billingTeam).catch(err => {
+          // Sem a API de administração, segue: o gateway ainda aplica o limite na chamada.
+          logger.warn(`Orçamento: não foi possível verificar ${billingTeam}: ${err}`);
+          return { blocked: false, status: undefined };
+        });
+        if (check.blocked) throw new BudgetExceeded(billingTeam, check.status?.resetAt);
+      }
+      const requestExtras = await Promise.resolve(gateway.requestExtras(caller)).catch(err => {
+        logger.warn(`Gateway: credencial do time indisponível, usando a do portal: ${err}`);
+        return gateway.requestExtras({ ...caller, billingTeam: undefined });
+      });
       await runAgent({
         client: gateway.client(),
-        requestExtras: gateway.requestExtras({ userRef, teams, requestId }),
+        requestExtras,
         actionsService,
         credentials,
         logger,
@@ -150,6 +194,12 @@ export async function createRouter(opts: {
     } catch (err) {
       if (abort.signal.aborted) {
         status = 'aborted';
+      } else if (err instanceof BudgetExceeded || gateway.budgets?.isBudgetExceeded(err)) {
+        status = 'budget_exceeded';
+        budgets.invalidate();
+        errorMessage = budgetMessage(billingTeam, err instanceof BudgetExceeded ? err.resetAt : undefined);
+        logger.info(`Pedido recusado por orçamento (${billingTeam ?? 'sem time'})`);
+        emit({ type: 'error', message: errorMessage });
       } else {
         status = 'error';
         errorMessage = describeError(err);
@@ -239,6 +289,17 @@ export async function createRouter(opts: {
         }))
         .sort((a, b) => a.id.localeCompare(b.id)),
     });
+  });
+
+  router.get('/governance/budgets', async (req, res) => {
+    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    await authorize(credentials, agentGovernanceReadPermission);
+    res.json(
+      await budgets.report().catch(err => {
+        logger.warn(`Orçamento: falha ao consultar o gateway: ${err}`);
+        return { ...budgets.describe(), teams: [], alerts: [], unavailable: describeError(err) };
+      }),
+    );
   });
 
   router.get('/governance/evals', async (req, res) => {

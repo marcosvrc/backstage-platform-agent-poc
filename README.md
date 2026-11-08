@@ -202,17 +202,39 @@ As chamadas do agente ao modelo passam por um **gateway**, escolhido em `agent.g
 | `litellm` | LiteLLM Proxy, rota de *pass-through* `/anthropic`: a Messages API nativa passa sem tradução, então `effort`, fallback e cache continuam funcionando |
 
 ```bash
-./scripts/setup-gateway.sh   # sobe o LiteLLM (porta 4000), emite a virtual key do portal e grava agent.gateway no app-config.local.yaml
+./scripts/setup-gateway.sh   # sobe o LiteLLM (porta 4000), emite as keys do portal e grava agent.gateway no app-config.local.yaml
 ./scripts/start-portal.sh
 ```
 
-- **Chaves:** a chave da Anthropic fica só no LiteLLM, em `gateway/.env`, que não é versionado. O portal usa uma **virtual key** (`backstage-agent`).
+- **Chaves:** a chave da Anthropic fica só no LiteLLM, em `gateway/.env`, que não é versionado. O portal usa:
+  - a **virtual key** `backstage-agent`, para pedidos sem time;
+  - a key de administração `backstage-admin` (usuário `backstage-portal`, papel `proxy_admin`), que gerencia os times e os orçamentos. Não é a master key e pode ser revogada sozinha.
 - **Atribuição:** cada chamada vai com `metadata.user_id` e `litellm_metadata` (usuário e as tags `app:backstage-agent`, `team:<time>` e `request:<id>`). O LiteLLM registra o gasto por usuário final e por tag (`/spend/logs`).
 - **Rastreabilidade:** a tag `request:<id>` é o mesmo ID da auditoria do Backstage.
 - **Painel do LiteLLM:** http://localhost:4000/ui (login com a `LITELLM_MASTER_KEY` de `gateway/.env`).
 
+### Orçamento de IA por time
+
+Cada Group do catálogo tem um **orçamento mensal** no LiteLLM (padrão US$ 50, em `agent.governance.budgets`):
+- o pedido é cobrado do primeiro time do usuário, com a virtual key do time;
+- ao estourar, o LiteLLM bloqueia as chamadas do time até a renovação mensal, e o agente explica o motivo no chat;
+- alertas vão para o **sino do Backstage** em 80% e 100%: para o próprio time e para o platform-team (com link para o painel);
+- a sincronização roda a cada 5 minutos: times novos no catálogo ganham orçamento, e mudanças na config são aplicadas.
+
+```yaml
+agent:
+  governance:
+    budgets:
+      enabled: true
+      monthlyUsd: 50
+      teams:
+        platform-team: 100   # exceção por time
+      thresholds: [0.8, 1]
+      notify: [group:default/platform-team]
+```
+
 **Trocar de gateway** (Kong, Portkey, Envoy etc.):
-1. Implemente a interface `ModelGateway` em `portal/plugins/agent-backend/src/gateway/<nome>.ts`. São quatro métodos: o cliente do SDK, a atribuição por chamada, a verificação de saúde e a descrição.
+1. Implemente a interface `ModelGateway` em `portal/plugins/agent-backend/src/gateway/<nome>.ts`. São quatro métodos: o cliente do SDK, a atribuição por chamada, a verificação de saúde e a descrição. O orçamento (`budgets`) é opcional.
 2. Registre a nova classe em `GATEWAY_FACTORIES` (`gateway/index.ts`).
 3. Mude `agent.gateway.type`.
 
@@ -225,6 +247,7 @@ Fica em http://localhost:3000/governanca-ia e só o **platform-team** acessa (pe
 | Aba | Conteúdo |
 |---|---|
 | Visão geral | Pedidos, usuários, tokens, custo estimado, latência, erros e ações de escrita; pedidos por dia; uso por time, por usuário e por ação |
+| Orçamento | Gasto do mês por time (calculado pelo gateway) contra o orçamento, renovação, alertas enviados e regras |
 | Auditoria | Cada pedido: quem fez, status, ações executadas, aprovações e recusas, tokens e latência |
 | Inventário | Ativos de IA do catálogo (`catalog/ai/ai.yaml`): modelos, gateways, agentes e servidores MCP, com dono, risco, acesso a dados e aprovação humana |
 | Políticas | Modelo, gateway (com verificação de saúde), regras, e ações disponíveis com indicação das que exigem aprovação |
@@ -257,5 +280,5 @@ Cada rodada é publicada no painel de governança, na aba Qualidade. Use `--no-p
   - [x] Métricas de uso (tokens, latência) no runner dos evals
     - [x] OAuth no MCP: agentes externos com a identidade do usuário
   - [x] Governança de IA (fase 1): gateway LiteLLM plugável, auditoria, painel e inventário de IA no catálogo
-  - [ ] Governança de IA (fase 2): orçamento por time no LiteLLM, custo vindo do gateway no painel, alertas
+  - [x] Governança de IA (fase 2): orçamento por time no LiteLLM, custo vindo do gateway no painel, alertas no sino
   - [ ] Rodar os evals com o modelo e fechar o [relatório de go/no-go](docs/relatorio-go-no-go.md)

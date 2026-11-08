@@ -8,6 +8,8 @@ export interface CallerContext {
   teams: string[];
   /** ID do pedido no agente (o mesmo gravado na auditoria). */
   requestId: string;
+  /** Time que paga o pedido (orçamento). Normalmente o primeiro de `teams`. */
+  billingTeam?: string;
 }
 
 /** Campos extras que o gateway quer em cada chamada ao modelo. */
@@ -39,8 +41,33 @@ export interface ModelGateway {
   describe(): { type: string; displayName: string; baseUrl?: string };
   /** Cliente do SDK já apontado para o destino certo. */
   client(): Anthropic;
-  /** Atribuição (usuário, time, tags) para uma chamada. */
-  requestExtras(caller: CallerContext): GatewayRequestExtras;
+  /** Atribuição (usuário, time, tags) e credencial para uma chamada. */
+  requestExtras(caller: CallerContext): GatewayRequestExtras | Promise<GatewayRequestExtras>;
   /** Verificação de saúde para o painel. */
   health(): Promise<GatewayHealth>;
+  /**
+   * Orçamento por time (opcional). Gateways sem esse recurso não implementam;
+   * o painel então mostra só o custo estimado.
+   */
+  readonly budgets?: GatewayBudgets;
+}
+
+/** Situação do orçamento de um time no gateway (período atual). */
+export interface TeamBudgetStatus {
+  /** Ex.: group:default/platform-team */
+  teamRef: string;
+  spendUsd: number;
+  maxBudgetUsd?: number;
+  /** Quando o gasto do período zera (ISO 8601). */
+  resetAt?: string;
+}
+
+/** Controle de orçamento aplicado pelo gateway (ele bloqueia ao estourar). */
+export interface GatewayBudgets {
+  /** Cria o time no gateway ou ajusta o orçamento mensal. Idempotente. */
+  ensureTeam(teamRef: string, monthlyBudgetUsd: number): Promise<void>;
+  /** Times gerenciados pelo portal, com gasto e orçamento. */
+  list(): Promise<TeamBudgetStatus[]>;
+  /** Indica se o erro da chamada ao modelo foi o bloqueio por orçamento. */
+  isBudgetExceeded(err: unknown): boolean;
 }

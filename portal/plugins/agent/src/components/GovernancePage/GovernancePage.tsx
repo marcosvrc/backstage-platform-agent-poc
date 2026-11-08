@@ -9,6 +9,7 @@ import { Entity, stringifyEntityRef } from '@backstage/catalog-model';
 import { Box, Button, Flex, Text } from '@backstage/ui';
 import {
   RiCheckLine,
+  RiAlertLine,
   RiCloseLine,
   RiLockLine,
   RiShieldCheckLine,
@@ -16,6 +17,7 @@ import {
 } from '@remixicon/react';
 import {
   AuditItem,
+  Budgets,
   EvalRun,
   ForbiddenError,
   Overview,
@@ -24,10 +26,11 @@ import {
   getGovernance,
 } from '../../governanceApi';
 
-type TabId = 'overview' | 'audit' | 'inventory' | 'policy' | 'quality';
+type TabId = 'overview' | 'budgets' | 'audit' | 'inventory' | 'policy' | 'quality';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'overview', label: 'Visão geral' },
+  { id: 'budgets', label: 'Orçamento' },
   { id: 'audit', label: 'Auditoria' },
   { id: 'inventory', label: 'Inventário' },
   { id: 'policy', label: 'Políticas' },
@@ -206,6 +209,7 @@ export function GovernancePage() {
       </div>
 
       {tab === 'overview' && <OverviewTab days={days} setDays={setDays} policy={policy.data} />}
+      {tab === 'budgets' && <BudgetsTab />}
       {tab === 'audit' && <AuditTab />}
       {tab === 'inventory' && <InventoryTab />}
       {tab === 'policy' && <PolicyTab policy={policy.data} error={policy.error} />}
@@ -548,6 +552,181 @@ function DailyBars({ days }: { days: Overview['byDay'] }) {
   );
 }
 
+const usd = (n: number) => `US$ ${n.toFixed(2)}`;
+const fmtDate = (iso?: string) =>
+  iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '–';
+
+/** Faixa do uso do orçamento: cor + ícone + texto (nunca só a cor). */
+function budgetLevel(ratio: number | undefined, thresholds: number[]) {
+  const warn = Math.min(...thresholds.filter(t => t < 1), 1);
+  if (ratio === undefined) return { label: 'sem limite', fill: 'var(--bui-border-2)', fg: undefined };
+  if (ratio >= 1) return { label: 'esgotado', fill: 'var(--bui-negative-bg)', fg: 'var(--bui-fg-negative)' };
+  if (ratio >= warn) return { label: 'atenção', fill: 'var(--bui-warning-bg)', fg: 'var(--bui-fg-warning)' };
+  return { label: 'ok', fill: 'var(--bui-accent-bg)', fg: undefined };
+}
+
+function BudgetMeter({ ratio, thresholds }: { ratio?: number; thresholds: number[] }) {
+  const level = budgetLevel(ratio, thresholds);
+  const pct = ratio === undefined ? 0 : Math.min(100, ratio * 100);
+  return (
+    <Flex align="center" gap="2" style={{ minWidth: 200 }}>
+      <div
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pct)}
+        aria-label="Uso do orçamento"
+        style={{
+          flex: 1,
+          height: 8,
+          borderRadius: 4,
+          background: 'var(--bui-bg-neutral-2)',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ width: `${pct}%`, height: '100%', background: level.fill, borderRadius: 4 }} />
+      </div>
+      <span style={{ ...s.num, minWidth: 44 }}>{ratio === undefined ? '–' : `${Math.round(ratio * 100)}%`}</span>
+      <span style={{ ...s.chip, margin: 0, color: level.fg ?? 'var(--bui-fg-secondary)' }}>
+        {level.fg && <RiAlertLine size={12} />}
+        {level.label}
+      </span>
+    </Flex>
+  );
+}
+
+function BudgetsTab() {
+  const { data, error, loading, reload } = useGovernance<Budgets>('budgets');
+  if (!data) return <Loading error={error} loading={loading} />;
+  if (!data.supported || !data.enabled) {
+    return (
+      <div style={s.card}>
+        <Text>Orçamento por time desligado.</Text>
+        <Text color="secondary" as="p">
+          {data.supported
+            ? 'Ligue em agent.governance.budgets.enabled.'
+            : 'O gateway atual não controla orçamento. No LiteLLM, defina agent.gateway.adminKey (o scripts/setup-gateway.sh faz isso) e ligue agent.governance.budgets.enabled.'}
+        </Text>
+      </div>
+    );
+  }
+  const spend = data.teams.reduce((sum, t) => sum + t.spendUsd, 0);
+  const budget = data.teams.reduce((sum, t) => sum + (t.maxBudgetUsd ?? 0), 0);
+  const warn = Math.min(...data.thresholds.filter(t => t < 1), 1);
+  const atRisk = data.teams.filter(t => (t.ratio ?? 0) >= warn).length;
+  const exhausted = data.teams.filter(t => (t.ratio ?? 0) >= 1).length;
+  const nextReset = data.teams.map(t => t.resetAt).filter(Boolean).sort()[0];
+  return (
+    <>
+      {data.unavailable && (
+        <div style={{ ...s.card, marginBottom: 16, borderColor: 'var(--bui-negative-border)' }}>
+          <Text color="danger">Não foi possível ler o gasto no gateway: {data.unavailable}</Text>
+        </div>
+      )}
+      <div style={s.tiles}>
+        <Tile label="Gasto no mês" value={usd(spend)} hint="calculado pelo gateway" />
+        <Tile label="Orçamento somado" value={usd(budget)} hint={`padrão ${usd(data.monthlyUsd)} por time`} />
+        <Tile label="Times em atenção" value={fmt(atRisk)} hint={`${exhausted} com orçamento esgotado`} />
+        <Tile label="Renovação" value={<span style={{ fontSize: 20 }}>{fmtDate(nextReset)}</span>} hint="o gasto zera nessa data" />
+      </div>
+
+      <Section
+        title="Por time"
+        aside={
+          <Button size="small" variant="tertiary" onPress={reload}>
+            Atualizar
+          </Button>
+        }
+      >
+        <div style={s.scroll}>
+          <table style={s.table}>
+            <thead>
+              <tr>
+                <th style={s.th}>Time</th>
+                <th style={{ ...s.th, ...s.num }}>Gasto</th>
+                <th style={{ ...s.th, ...s.num }}>Orçamento</th>
+                <th style={s.th}>Uso</th>
+                <th style={s.th}>Renova em</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.teams.map(t => (
+                <tr key={t.teamRef}>
+                  <td style={s.td}>{shortRef(t.teamRef)}</td>
+                  <td style={{ ...s.td, ...s.num }}>{usd(t.spendUsd)}</td>
+                  <td style={{ ...s.td, ...s.num }}>{t.maxBudgetUsd === undefined ? '–' : usd(t.maxBudgetUsd)}</td>
+                  <td style={s.td}>
+                    <BudgetMeter ratio={t.ratio} thresholds={data.thresholds} />
+                  </td>
+                  <td style={s.td}>{fmtDate(t.resetAt)}</td>
+                </tr>
+              ))}
+              {data.teams.length === 0 && (
+                <tr>
+                  <td style={s.td} colSpan={5}>
+                    <Text color="secondary">Nenhum time sincronizado ainda (a sincronização roda a cada 5 minutos).</Text>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <Section title="Alertas enviados">
+        {data.alerts.length === 0 ? (
+          <Text color="secondary">Nenhum alerta enviado.</Text>
+        ) : (
+          <div style={s.scroll}>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Quando</th>
+                  <th style={s.th}>Time</th>
+                  <th style={s.th}>Limiar</th>
+                  <th style={{ ...s.th, ...s.num }}>Gasto na hora</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.alerts.map(a => (
+                  <tr key={`${a.teamRef}-${a.period}-${a.threshold}`}>
+                    <td style={s.td}>{new Date(a.createdAt).toLocaleString('pt-BR')}</td>
+                    <td style={s.td}>{shortRef(a.teamRef)}</td>
+                    <td style={s.td}>{Math.round(a.threshold * 100)}%</td>
+                    <td style={{ ...s.td, ...s.num }}>
+                      {usd(a.spendUsd)} de {usd(a.maxBudgetUsd)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
+
+      <Section title="Regras de orçamento">
+        <div style={s.card}>
+          <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
+            <li>
+              Cada Group do catálogo tem orçamento mensal de <strong>{usd(data.monthlyUsd)}</strong>
+              {Object.keys(data.overrides).length > 0 &&
+                ` (exceções: ${Object.entries(data.overrides)
+                  .map(([team, v]) => `${shortRef(team)} ${usd(v)}`)
+                  .join(', ')})`}
+              . O pedido é cobrado do primeiro time do usuário.
+            </li>
+            <li>
+              Alertas no sino em {data.thresholds.map(t => `${Math.round(t * 100)}%`).join(' e ')}: para o próprio time e para{' '}
+              {data.notify.map(shortRef).join(', ') || 'ninguém mais'}.
+            </li>
+            <li>Ao chegar a 100%, o gateway bloqueia as chamadas do time até a renovação; o agente explica o motivo no chat.</li>
+          </ul>
+        </div>
+      </Section>
+    </>
+  );
+}
+
 const STATUS_LABEL: Record<string, { label: string; ok: boolean }> = {
   ok: { label: 'concluído', ok: true },
   awaiting_approval: { label: 'aguardando aprovação', ok: true },
@@ -555,6 +734,7 @@ const STATUS_LABEL: Record<string, { label: string; ok: boolean }> = {
   max_iterations: { label: 'limite de iterações', ok: false },
   error: { label: 'erro', ok: false },
   aborted: { label: 'cancelado', ok: false },
+  budget_exceeded: { label: 'bloqueado por orçamento', ok: false },
 };
 
 const APPROVAL_LABEL: Record<string, string> = {
@@ -785,6 +965,10 @@ function PolicyTab({ policy, error }: { policy?: Policy; error?: Error }) {
             <li>
               Chamadas ao modelo passam pelo gateway <strong>{policy.gateway.type}</strong>, que guarda as chaves dos provedores e
               atribui o gasto por usuário e time.
+            </li>
+            <li>
+              Cada time tem um <strong>orçamento mensal de IA</strong>. Ao estourar, o gateway bloqueia o agente para o time até o
+              próximo período; alertas vão para o sino do Backstage (veja a aba Orçamento).
             </li>
           </ul>
         </div>

@@ -3,7 +3,14 @@ import { DirectAnthropicGateway } from './direct';
 import { LiteLLMGateway } from './litellm';
 import type { ModelGateway } from './types';
 
-export type { CallerContext, GatewayHealth, GatewayRequestExtras, ModelGateway } from './types';
+export type {
+  CallerContext,
+  GatewayBudgets,
+  GatewayHealth,
+  GatewayRequestExtras,
+  ModelGateway,
+  TeamBudgetStatus,
+} from './types';
 
 /**
  * Gateways disponíveis. Para adicionar outro (Kong, Portkey, Envoy...),
@@ -16,6 +23,7 @@ const GATEWAY_FACTORIES: Record<string, (config: Config) => ModelGateway> = {
     new LiteLLMGateway({
       baseUrl: config.getString('agent.gateway.baseUrl'),
       apiKey: config.getString('agent.gateway.apiKey'),
+      adminKey: config.getOptionalString('agent.gateway.adminKey'),
       tags: config.getOptionalStringArray('agent.gateway.tags'),
       sendMetadata: config.getOptionalBoolean('agent.gateway.sendMetadata'),
     }),

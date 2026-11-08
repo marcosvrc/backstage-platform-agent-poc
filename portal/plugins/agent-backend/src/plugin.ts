@@ -1,9 +1,11 @@
 import { coreServices, createBackendPlugin } from '@backstage/backend-plugin-api';
 import { actionsRegistryServiceRef, actionsServiceRef } from '@backstage/backend-plugin-api/alpha';
 import { catalogServiceRef } from '@backstage/plugin-catalog-node';
+import { notificationService } from '@backstage/plugin-notifications-node';
 import { registerPlatformActions } from './actions';
 import { buildSystemPrompt } from './agent/prompt';
 import { createGateway } from './gateway';
+import { BudgetService } from './governance/budgets';
 import { GovernanceStore } from './governance/store';
 import { agentPermissions } from './permissions';
 import { createRouter } from './router';
@@ -28,6 +30,9 @@ export const agentPlugin = createBackendPlugin({
         permissionsRegistry: coreServices.permissionsRegistry,
         auditor: coreServices.auditor,
         database: coreServices.database,
+        scheduler: coreServices.scheduler,
+        auth: coreServices.auth,
+        notifications: notificationService,
         actionsService: actionsServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
         catalog: catalogServiceRef,
@@ -43,6 +48,9 @@ export const agentPlugin = createBackendPlugin({
         permissionsRegistry,
         auditor,
         database,
+        scheduler,
+        auth,
+        notifications,
         actionsService,
         actionsRegistry,
         catalog,
@@ -86,6 +94,42 @@ export const agentPlugin = createBackendPlugin({
           }),
         );
 
+        // Orçamento por time: aplicado pelo gateway, sincronizado e alertado aqui.
+        const budgetConfig = config.getOptionalConfig('agent.governance.budgets');
+        const overridesConfig = budgetConfig?.getOptionalConfig('teams');
+        const budgets = new BudgetService({
+          budgets: gateway.budgets,
+          settings: {
+            enabled: budgetConfig?.getOptionalBoolean('enabled') ?? false,
+            monthlyUsd: budgetConfig?.getOptionalNumber('monthlyUsd') ?? 50,
+            teams: Object.fromEntries(
+              (overridesConfig?.keys() ?? []).map(k => [k, overridesConfig!.getNumber(k)]),
+            ),
+            thresholds: (budgetConfig?.getOptional<number[]>('thresholds') ?? [0.8, 1]).map(Number),
+            notify: budgetConfig?.getOptionalStringArray('notify') ?? [
+              'group:default/platform-team',
+            ],
+          },
+          store,
+          catalog,
+          auth,
+          notifications,
+          logger,
+        });
+        if (budgets.active) {
+          await scheduler.scheduleTask({
+            id: 'agent-budgets-sync',
+            frequency: { minutes: 5 },
+            timeout: { minutes: 2 },
+            initialDelay: { seconds: 15 },
+            fn: () => budgets.sync(),
+          });
+        } else if (budgetConfig?.getOptionalBoolean('enabled') && !gateway.budgets) {
+          logger.warn(
+            `agent.governance.budgets está ligado, mas o gateway "${gateway.type}" não controla orçamento (no LiteLLM, defina agent.gateway.adminKey).`,
+          );
+        }
+
         httpRouter.use(
           await createRouter({
             httpAuth,
@@ -97,6 +141,7 @@ export const agentPlugin = createBackendPlugin({
             settings,
             gateway,
             store,
+            budgets,
             governance: {
               storePrompts: config.getOptionalBoolean('agent.governance.storePrompts') ?? false,
               pricing,

@@ -87,6 +87,34 @@ export interface EvalRun {
   latencyP90Ms?: number;
 }
 
+export interface Budgets {
+  /** O gateway atual controla orçamento? */
+  supported: boolean;
+  enabled: boolean;
+  monthlyUsd: number;
+  overrides: Record<string, number>;
+  thresholds: number[];
+  notify: string[];
+  /** Gasto do período atual, lido do gateway. */
+  teams: Array<{
+    teamRef: string;
+    spendUsd: number;
+    maxBudgetUsd?: number;
+    resetAt?: string;
+    ratio?: number;
+  }>;
+  alerts: Array<{
+    createdAt: string;
+    teamRef: string;
+    period: string;
+    threshold: number;
+    spendUsd: number;
+    maxBudgetUsd: number;
+  }>;
+  /** Preenchido quando o gateway não respondeu. */
+  unavailable?: string;
+}
+
 /** Erro 403: o usuário não tem a permissão agent.governance.read. */
 export class ForbiddenError extends Error {}
 

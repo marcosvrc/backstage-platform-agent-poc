@@ -17,7 +17,7 @@ export interface RequestRecord {
   kind: 'message' | 'resume';
   model: string;
   gateway: string;
-  status: RunSummary['status'] | 'error' | 'aborted';
+  status: RunSummary['status'] | 'error' | 'aborted' | 'budget_exceeded';
   error?: string;
   latencyMs: number;
   usage: AgentUsage;
@@ -241,6 +241,43 @@ export class GovernanceStore {
           error: t.error ?? undefined,
           latencyMs: t.latency_ms ?? undefined,
         })),
+    }));
+  }
+
+  /** Registra um alerta de orçamento. Retorna false se ele já tinha sido enviado. */
+  async recordBudgetAlert(a: {
+    teamRef: string;
+    period: string;
+    threshold: number;
+    spendUsd: number;
+    maxBudgetUsd: number;
+  }): Promise<boolean> {
+    const existing = await this.db('agent_budget_alerts')
+      .where({ team_ref: a.teamRef, period: a.period, threshold: a.threshold })
+      .first();
+    if (existing) return false;
+    await this.db('agent_budget_alerts')
+      .insert({
+        team_ref: a.teamRef,
+        period: a.period,
+        threshold: a.threshold,
+        spend_usd: a.spendUsd,
+        max_budget_usd: a.maxBudgetUsd,
+      })
+      .onConflict(['team_ref', 'period', 'threshold'])
+      .ignore();
+    return true;
+  }
+
+  async budgetAlerts(limit = 100) {
+    const rows = await this.db('agent_budget_alerts').orderBy('created_at', 'desc').limit(limit);
+    return rows.map(r => ({
+      createdAt: new Date(r.created_at).toISOString(),
+      teamRef: r.team_ref as string,
+      period: r.period as string,
+      threshold: Number(r.threshold),
+      spendUsd: Number(r.spend_usd),
+      maxBudgetUsd: Number(r.max_budget_usd),
     }));
   }
 

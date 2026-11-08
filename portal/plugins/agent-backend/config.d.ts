@@ -25,6 +25,12 @@ export interface Config {
        * @visibility secret
        */
       apiKey?: string;
+      /**
+       * LiteLLM: chave de administração. Habilita o orçamento por time (o portal
+       * cria um team por Group do catálogo e uma virtual key por team).
+       * @visibility secret
+       */
+      adminKey?: string;
       /** Tags fixas enviadas em todas as chamadas, ex.: app:backstage-agent */
       tags?: string[];
       /** LiteLLM: envia litellm_metadata (usuário e tags). Padrão: true */
@@ -38,6 +44,22 @@ export interface Config {
        * Preço em USD por milhão de tokens, por modelo. Sem preço, o painel mostra só tokens.
        * Ex.: pricing: { claude-opus-5-5: { input: X, output: Y, cacheRead: Z, cacheWrite: W } }
        */
+      /**
+       * Orçamento mensal de IA por time, aplicado pelo gateway (precisa de um
+       * gateway com orçamento, ex.: LiteLLM com adminKey).
+       */
+      budgets?: {
+        /** Padrão: false */
+        enabled?: boolean;
+        /** Orçamento mensal padrão por time, em USD. Padrão: 50 */
+        monthlyUsd?: number;
+        /** Exceções por time (nome do Group ou entity ref), em USD. */
+        teams?: { [team: string]: number };
+        /** Frações do orçamento que disparam alerta no sino. Padrão: [0.8, 1] */
+        thresholds?: number[];
+        /** Quem recebe todos os alertas. Padrão: [group:default/platform-team] */
+        notify?: string[];
+      };
       pricing?: {
         [model: string]: {
           input?: number;

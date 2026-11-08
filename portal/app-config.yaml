@@ -224,6 +224,16 @@ agent:
   governance:
     # Grava o início de cada pergunta na auditoria (cuidado com dados sensíveis).
     storePrompts: true
+    # Orçamento mensal de IA por time (Groups do catálogo). Aplicado pelo gateway:
+    # precisa de um gateway com orçamento (LiteLLM com agent.gateway.adminKey).
+    # Com o gateway direct, fica desligado mesmo com enabled: true.
+    budgets:
+      enabled: true
+      monthlyUsd: 50
+      # teams:
+      #   platform-team: 100
+      thresholds: [0.8, 1] # alertas no sino em 80% e 100%
+      notify: [group:default/platform-team]
     # Preço em USD por milhão de tokens, para o painel estimar custo.
     # Preencha com a tabela de preços vigente da Anthropic (ou da sua negociação).
     # pricing:
