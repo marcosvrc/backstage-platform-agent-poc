@@ -5,6 +5,10 @@ app:
   # Enable all packages by default, this will discover packages from packages/app/package.json
   packages: all
 
+  # Provedores da tela de login (packages/app/src/modules/auth): guest | oidc
+  signIn:
+    providers: [guest]
+
   extensions:
     # A página inicial (/) é o chat do Platform Agent (plugins/agent).
     # O catálogo fica no caminho padrão /catalog.
@@ -91,6 +95,8 @@ app:
 
 organization:
   name: Acme
+  # Time de plataforma: vê o painel de governança, remove locations e recebe os alertas de orçamento.
+  platformTeam: group:default/platform-team
 
 backend:
   # Used for enabling authentication, secret is shared by all backend plugins
@@ -163,6 +169,7 @@ techdocs:
     type: 'local' # Alternatives - 'googleGcs' or 'awsS3'. Read documentation for using alternatives.
 
 auth:
+  # Sem SSO, o login é guest (só desenvolvimento). Para SSO com Keycloak: ./scripts/start-portal.sh --keycloak
   # see https://backstage.io/docs/auth/ to learn about auth providers
   providers:
     # See https://backstage.io/docs/auth/guest/provider
@@ -201,6 +208,11 @@ catalog:
     # Catálogo fictício da POC (caminhos relativos a packages/backend)
     - type: file
       target: ../../../catalog/all.yaml
+    # Times e pessoas (no modo --keycloak vêm do diretório, veja app-config.keycloak.yaml)
+    - type: file
+      target: ../../../catalog/org/org.yaml
+    - type: file
+      target: ../../../catalog/org/guest.yaml
     # Golden paths (templates do Scaffolder)
     - type: file
       target: ../../../templates/all.yaml
@@ -233,7 +245,7 @@ agent:
       # teams:
       #   platform-team: 100
       thresholds: [0.8, 1] # alertas no sino em 80% e 100%
-      notify: [group:default/platform-team]
+      # notify: [group:default/platform-team]  # padrão: organization.platformTeam
     # Preço em USD por milhão de tokens, para o painel estimar custo.
     # Preencha com a tabela de preços vigente da Anthropic (ou da sua negociação).
     # pricing:

@@ -6,7 +6,6 @@ metadata:
   description: Catálogo fictício da Acme usado na POC do Platform Agent
 spec:
   targets:
-    - ./org/org.yaml
     - ./systems/systems.yaml
     - ./apis/apis.yaml
     - ./resources/resources.yaml

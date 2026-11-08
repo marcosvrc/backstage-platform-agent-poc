@@ -28,7 +28,7 @@ Agente (Claude Code / chat no portal)  ──MCP──►  Backstage
 ├── portal/                  # app Backstage (create-app, Backstage 1.56)
 ├── catalog/                 # catálogo fictício da "Acme"
 │   ├── all.yaml             # Location de entrada
-│   ├── org/                 # Groups e Users
+│   ├── org/                 # Groups e Users (org.yaml: modo guest; guest.yaml: usuário de dev)
 │   ├── systems/             # Domain e Systems
 │   ├── apis/                # APIs (OpenAPI / AsyncAPI)
 │   ├── resources/           # bancos e tópicos
@@ -36,10 +36,12 @@ Agente (Claude Code / chat no portal)  ──MCP──►  Backstage
 ├── templates/               # golden paths do Scaffolder (Node e Java)
 ├── evals/                   # conjunto de avaliação do agente (casos + runner)
 ├── gateway/litellm/         # config do LiteLLM (gateway de IA)
+├── keycloak/                # realm "acme" do Keycloak (SSO e diretório)
 ├── personas/                # logins de teste (ana, bruno, diego) para validar permissões
-├── scripts/                 # start-portal, setup-gateway, setup-agent-token, check-permissions
+├── scripts/                 # start-portal, setup-keycloak, setup-gateway, setup-agent-token, check-permissions
 ├── docs/                    # relatório de go/no-go
-├── docker-compose.yml       # Postgres local
+├── docker-compose.yml       # Postgres, LiteLLM e Keycloak locais
+├── app-config.keycloak.yaml # override: SSO e diretório pelo Keycloak
 └── app-config.sqlite.yaml   # override para rodar sem Docker
 ```
 
@@ -58,7 +60,7 @@ O `payments-db` tem a label `acme.example/data-classification: restricted`: só 
 
 ## Como rodar
 
-Pré-requisitos: Node 22 ou 24, Yarn (`corepack enable`) e Docker.
+Pré-requisitos: Node 22.12+ ou 24 (`nvm use` em `portal/`), Yarn (`corepack enable`) e Docker.
 
 ```bash
 # 1. Postgres
@@ -79,11 +81,40 @@ Variações:
 ```bash
 ./scripts/start-portal.sh bruno      # login como bruno.lima (checkout-team); também: ana, diego
 ./scripts/start-portal.sh --sqlite   # sem Docker, dados em memória
+./scripts/start-portal.sh --keycloak # SSO e diretório pelo Keycloak (veja abaixo)
 ```
 
 > O `--config` do `backstage-cli` **substitui** o `app-config.yaml` em vez de somar. Por isso use o script, que monta a lista completa (`app-config.yaml` + `app-config.local.yaml` + overrides).
 
 > O TechDocs está configurado com `runIn: docker`, então a renderização das docs também precisa do Docker rodando.
+
+## Login corporativo (SSO com Keycloak)
+
+O login guest é só para desenvolvimento. No cenário real, o portal usa o **Keycloak** para duas coisas:
+
+| Parte | Como funciona |
+|---|---|
+| Login (OIDC) | Provedor `oidc` do auth-backend, client confidencial `backstage` no realm. O resolver `emailMatchingUserEntityProfileEmail` liga quem entrou ao `User` do catálogo pelo e-mail. |
+| Diretório | Módulo `@backstage-community/plugin-catalog-backend-module-keycloak`: a cada 5 minutos, importa usuários e grupos (com subgrupos e participação) como `User` e `Group`, pela conta de serviço do client `backstage-catalog` (`query-groups`, `query-users`, `view-users`). |
+
+```bash
+./scripts/setup-keycloak.sh          # sobe o Keycloak (porta 8180), importa o realm e gera keycloak/.env
+./scripts/start-portal.sh --keycloak
+```
+
+- **Usuários de teste:** `ana.souza` (platform-team), `bruno.lima` e `carla.mendes` (checkout-team), `diego.rocha` (payments-team). A senha é `KEYCLOAK_DEV_USER_PASSWORD`, em `keycloak/.env`.
+- **Console do Keycloak:** http://localhost:8180/admin (usuário e senha em `keycloak/.env`).
+- **Times:** os grupos do Keycloak viram os times do Backstage com o mesmo nome, então a política de permissões, o orçamento por time no LiteLLM e o painel de governança funcionam sem mudança. O time de plataforma é configurável em `organization.platformTeam`.
+- **Catálogo:** no modo `--keycloak`, o `catalog/org/org.yaml` não é carregado; pessoas e times vêm só do diretório. O usuário `guest` (`catalog/org/guest.yaml`) continua para os evals e scripts locais.
+- **MCP:** nada muda. O consentimento OAuth do Claude Code passa a pedir o login pelo Keycloak.
+- **Segredos:** `keycloak/.env` (não versionado) guarda os segredos dos clients e da sessão do login; o `start-portal.sh` exporta só os que o portal usa.
+
+Detalhes do realm (`keycloak/realm-acme.json`) que valem também para o Keycloak da empresa:
+- o client de login precisa do papel `offline_access` no escopo, para o portal renovar a sessão;
+- no Keycloak 26.8+, o client do diretório precisa do escopo `kc-admin-api`; sem ele, a API de administração responde 401;
+- usuários criados por importação de realm não recebem os papéis padrão sozinhos.
+
+**Para produção:** troque as URLs de `app-config.keycloak.yaml` pelas do Keycloak da empresa (com HTTPS), registre o callback `https://<backend>/api/auth/oidc/handler/frame` no client e injete os segredos pelo cofre. Em produção, o backend recusa o login guest.
 
 ## Servidor MCP
 
@@ -172,7 +203,7 @@ A política fica em `portal/packages/backend/src/permissions/policy.ts` (substit
 |---|---|
 | Ver entidades com `acme.example/data-classification: restricted` | só o time dono |
 | Remover entidade do catálogo | só o time dono |
-| Remover location (`catalog:unregister-entity`) | só o `platform-team` |
+| Remover location (`catalog:unregister-entity`) | só o time de plataforma (`organization.platformTeam`) |
 | Todo o resto | todos |
 
 Como o agente usa as credenciais do usuário, a mesma regra vale no portal e no chat. Para conferir com outra pessoa:
@@ -281,4 +312,6 @@ Cada rodada é publicada no painel de governança, na aba Qualidade. Use `--no-p
     - [x] OAuth no MCP: agentes externos com a identidade do usuário
   - [x] Governança de IA (fase 1): gateway LiteLLM plugável, auditoria, painel e inventário de IA no catálogo
   - [x] Governança de IA (fase 2): orçamento por time no LiteLLM, custo vindo do gateway no painel, alertas no sino
+- [ ] **Implementação real.**
+  - [x] SSO e diretório com Keycloak (OIDC + importação de usuários e grupos)
   - [ ] Rodar os evals com o modelo e fechar o [relatório de go/no-go](docs/relatorio-go-no-go.md)

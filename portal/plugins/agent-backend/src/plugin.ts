@@ -107,7 +107,8 @@ export const agentPlugin = createBackendPlugin({
             ),
             thresholds: (budgetConfig?.getOptional<number[]>('thresholds') ?? [0.8, 1]).map(Number),
             notify: budgetConfig?.getOptionalStringArray('notify') ?? [
-              'group:default/platform-team',
+              config.getOptionalString('organization.platformTeam') ??
+                'group:default/platform-team',
             ],
           },
           store,

@@ -1,0 +1,51 @@
+# SSO e diretório pelo Keycloak (realm "acme").
+#
+# Uso: ./scripts/setup-keycloak.sh   (uma vez: sobe o Keycloak e gera keycloak/.env)
+#      ./scripts/start-portal.sh --keycloak
+#
+# Os segredos (KEYCLOAK_*_CLIENT_SECRET e BACKSTAGE_AUTH_SESSION_SECRET) vêm de keycloak/.env,
+# exportados pelo start-portal.sh.
+# Em produção, troque as URLs pelas do Keycloak da empresa e injete os segredos pelo cofre.
+
+app:
+  signIn:
+    providers: [oidc]
+
+auth:
+  # O provedor OIDC guarda o estado do login (nonce, PKCE) numa sessão assinada.
+  session:
+    secret: ${BACKSTAGE_AUTH_SESSION_SECRET}
+  providers:
+    oidc:
+      development:
+        metadataUrl: http://localhost:8180/realms/acme/.well-known/openid-configuration
+        clientId: backstage
+        clientSecret: ${KEYCLOAK_BACKSTAGE_CLIENT_SECRET}
+        prompt: auto
+        signIn:
+          resolvers:
+            # Liga o login ao User do catálogo (importado do Keycloak) pelo e-mail.
+            - resolver: emailMatchingUserEntityProfileEmail
+
+catalog:
+  # Mesma lista do app-config.yaml, sem catalog/org/org.yaml: times e pessoas vêm do Keycloak.
+  # (listas na config substituem a anterior, não somam)
+  locations:
+    - type: file
+      target: ../../../catalog/all.yaml
+    - type: file
+      target: ../../../catalog/org/guest.yaml
+    - type: file
+      target: ../../../templates/all.yaml
+  providers:
+    keycloakOrg:
+      default:
+        baseUrl: http://localhost:8180
+        loginRealm: acme
+        realm: acme
+        clientId: backstage-catalog
+        clientSecret: ${KEYCLOAK_CATALOG_CLIENT_SECRET}
+        schedule:
+          frequency: { minutes: 5 }
+          timeout: { minutes: 3 }
+          initialDelay: { seconds: 10 }

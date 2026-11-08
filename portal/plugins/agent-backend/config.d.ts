@@ -1,4 +1,11 @@
 export interface Config {
+  organization?: {
+    /**
+     * Time de plataforma (entity ref do Group): painel de governança, remoção de
+     * locations e alertas de orçamento. Padrão: group:default/platform-team
+     */
+    platformTeam?: string;
+  };
   /** Configuração do Platform Agent */
   agent?: {
     /**
@@ -57,7 +64,7 @@ export interface Config {
         teams?: { [team: string]: number };
         /** Frações do orçamento que disparam alerta no sino. Padrão: [0.8, 1] */
         thresholds?: number[];
-        /** Quem recebe todos os alertas. Padrão: [group:default/platform-team] */
+        /** Quem recebe todos os alertas. Padrão: [organization.platformTeam] */
         notify?: string[];
       };
       pricing?: {

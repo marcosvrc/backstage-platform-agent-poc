@@ -33,5 +33,30 @@ services:
       postgres:
         condition: service_healthy
 
+  # Identidade (SSO e diretório de usuários/grupos). Suba com: ./scripts/setup-keycloak.sh
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2
+    container_name: backstage-poc-keycloak
+    profiles: [keycloak]
+    command: ['start-dev', '--import-realm', '--http-port', '8180']
+    env_file:
+      - path: keycloak/.env # gerado pelo setup-keycloak.sh (não versionado)
+        required: false
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: backstage
+      KC_DB_PASSWORD: backstage # apenas para desenvolvimento local
+      KC_HEALTH_ENABLED: 'true'
+      # Mesmo emissor para o navegador e para o backend (os dois rodam no host).
+      KC_HOSTNAME: http://localhost:8180
+    ports:
+      - '8180:8180'
+    volumes:
+      - ./keycloak/realm-acme.json:/opt/keycloak/data/import/realm-acme.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:

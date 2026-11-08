@@ -28,6 +28,8 @@ backend.add(import('@backstage/plugin-auth-backend'));
 // See https://backstage.io/docs/backend-system/building-backends/migrating#the-auth-plugin
 backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
 // See https://backstage.io/docs/auth/guest/provider
+// SSO corporativo (Keycloak) via OIDC. Configurado em app-config.keycloak.yaml.
+backend.add(import('@backstage/plugin-auth-backend-module-oidc-provider'));
 
 // catalog plugin
 backend.add(import('@backstage/plugin-catalog-backend'));
@@ -37,6 +39,10 @@ backend.add(
 
 // See https://backstage.io/docs/features/software-catalog/configuration#subscribing-to-catalog-errors
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
+// Usuários e times vindos do Keycloak (catalog.providers.keycloakOrg). Sem config, não faz nada.
+backend.add(
+  import('@backstage-community/plugin-catalog-backend-module-keycloak'),
+);
 
 // permission plugin
 backend.add(import('@backstage/plugin-permission-backend'));

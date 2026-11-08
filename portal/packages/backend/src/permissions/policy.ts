@@ -1,4 +1,4 @@
-import { createBackendModule } from '@backstage/backend-plugin-api';
+import { coreServices, createBackendModule } from '@backstage/backend-plugin-api';
 import {
   agentEvalsPublishPermission,
   agentGovernanceReadPermission,
@@ -27,6 +27,7 @@ import { policyExtensionPoint } from '@backstage/plugin-permission-node/alpha';
 /** Label que marca entidades com dados sensíveis (ex.: bancos com dados de cartão). */
 export const RESTRICTED_LABEL = 'acme.example/data-classification';
 export const RESTRICTED_VALUE = 'restricted';
+/** Padrão de `organization.platformTeam`. */
 export const PLATFORM_TEAM = 'group:default/platform-team';
 
 /**
@@ -43,6 +44,8 @@ export const PLATFORM_TEAM = 'group:default/platform-team';
  * para o portal, para o chat e para o MCP.
  */
 export class AcmePermissionPolicy implements PermissionPolicy {
+  constructor(private readonly platformTeam: string = PLATFORM_TEAM) {}
+
   async handle(request: PolicyQuery, user?: PolicyQueryUser): Promise<PolicyDecision> {
     const ownership = user?.info.ownershipEntityRefs ?? [];
 
@@ -73,7 +76,7 @@ export class AcmePermissionPolicy implements PermissionPolicy {
       isPermission(request.permission, agentEvalsPublishPermission)
     ) {
       return {
-        result: ownership.includes(PLATFORM_TEAM) ? AuthorizeResult.ALLOW : AuthorizeResult.DENY,
+        result: ownership.includes(this.platformTeam) ? AuthorizeResult.ALLOW : AuthorizeResult.DENY,
       };
     }
 
@@ -86,9 +89,14 @@ export default createBackendModule({
   moduleId: 'acme-policy',
   register(reg) {
     reg.registerInit({
-      deps: { policy: policyExtensionPoint },
-      async init({ policy }) {
-        policy.setPolicy(new AcmePermissionPolicy());
+      deps: { policy: policyExtensionPoint, config: coreServices.rootConfig },
+      async init({ policy, config }) {
+        // O time de plataforma vem da config (com SSO, é o grupo correspondente no diretório).
+        policy.setPolicy(
+          new AcmePermissionPolicy(
+            config.getOptionalString('organization.platformTeam') ?? PLATFORM_TEAM,
+          ),
+        );
       },
     });
   },

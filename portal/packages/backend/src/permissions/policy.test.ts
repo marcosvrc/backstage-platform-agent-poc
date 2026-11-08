@@ -70,6 +70,14 @@ describe('AcmePermissionPolicy', () => {
     expect(await policy.handle(perm, ana)).toEqual({ result: AuthorizeResult.ALLOW });
   });
 
+  it('o time de plataforma vem da config (ex.: grupo do diretório corporativo)', async () => {
+    const custom = new AcmePermissionPolicy('group:default/sre');
+    const sre = userIn('carla.mendes', 'group:default/sre');
+    const req = { permission: agentGovernanceReadPermission };
+    expect((await custom.handle(req, sre)).result).toBe(AuthorizeResult.ALLOW);
+    expect((await custom.handle(req, ana)).result).toBe(AuthorizeResult.DENY);
+  });
+
   it('demais permissões (ex.: criar serviço pelo template) são permitidas', async () => {
     expect(await policy.handle({ permission: taskCreatePermission }, bruno)).toEqual({
       result: AuthorizeResult.ALLOW,

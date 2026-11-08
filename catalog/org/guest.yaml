@@ -1,0 +1,10 @@
+# Usuário do login guest (só desenvolvimento local: evals, scripts e personas).
+# Fica fora do org.yaml porque, com o Keycloak, os outros usuários e times vêm do diretório.
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: guest
+spec:
+  profile:
+    displayName: Guest (dev local)
+  memberOf: [platform-team]

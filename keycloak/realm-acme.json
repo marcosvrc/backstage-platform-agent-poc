@@ -1,0 +1,190 @@
+{
+  "realm": "acme",
+  "displayName": "Acme",
+  "enabled": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "sslRequired": "external",
+  "groups": [
+    {
+      "name": "engineering",
+      "attributes": {
+        "description": [
+          "Engenharia"
+        ]
+      },
+      "subGroups": [
+        {
+          "name": "platform-team",
+          "attributes": {
+            "description": [
+              "Responsável pelo portal, golden paths e infraestrutura compartilhada"
+            ]
+          },
+          "subGroups": []
+        },
+        {
+          "name": "checkout-team",
+          "attributes": {
+            "description": [
+              "Time de Checkout"
+            ]
+          },
+          "subGroups": []
+        },
+        {
+          "name": "payments-team",
+          "attributes": {
+            "description": [
+              "Time de Pagamentos"
+            ]
+          },
+          "subGroups": []
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "ana.souza",
+      "email": "ana.souza@acme.example",
+      "emailVerified": true,
+      "firstName": "Ana",
+      "lastName": "Souza",
+      "enabled": true,
+      "groups": [
+        "/engineering/platform-team"
+      ],
+      "realmRoles": [
+        "default-roles-acme"
+      ]
+    },
+    {
+      "username": "bruno.lima",
+      "email": "bruno.lima@acme.example",
+      "emailVerified": true,
+      "firstName": "Bruno",
+      "lastName": "Lima",
+      "enabled": true,
+      "groups": [
+        "/engineering/checkout-team"
+      ],
+      "realmRoles": [
+        "default-roles-acme"
+      ]
+    },
+    {
+      "username": "carla.mendes",
+      "email": "carla.mendes@acme.example",
+      "emailVerified": true,
+      "firstName": "Carla",
+      "lastName": "Mendes",
+      "enabled": true,
+      "groups": [
+        "/engineering/checkout-team"
+      ],
+      "realmRoles": [
+        "default-roles-acme"
+      ]
+    },
+    {
+      "username": "diego.rocha",
+      "email": "diego.rocha@acme.example",
+      "emailVerified": true,
+      "firstName": "Diego",
+      "lastName": "Rocha",
+      "enabled": true,
+      "groups": [
+        "/engineering/payments-team"
+      ],
+      "realmRoles": [
+        "default-roles-acme"
+      ]
+    },
+    {
+      "username": "service-account-backstage-catalog",
+      "enabled": true,
+      "serviceAccountClientId": "backstage-catalog",
+      "clientRoles": {
+        "realm-management": [
+          "query-groups",
+          "query-users",
+          "view-users"
+        ]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "backstage",
+      "name": "Backstage (login)",
+      "description": "Login OIDC do portal. Segredo gerado pelo scripts/setup-keycloak.sh.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:7007/api/auth/oidc/handler/frame"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      },
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "acr",
+        "web-origins"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ]
+    },
+    {
+      "clientId": "backstage-catalog",
+      "name": "Backstage (leitura do diretório)",
+      "description": "Conta de serviço que importa usuários e grupos para o catálogo.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "basic",
+        "roles",
+        "kc-admin-api"
+      ]
+    }
+  ],
+  "clientScopeMappings": {
+    "realm-management": [
+      {
+        "client": "backstage-catalog",
+        "roles": [
+          "query-groups",
+          "query-users",
+          "view-users"
+        ]
+      }
+    ]
+  },
+  "scopeMappings": [
+    {
+      "client": "backstage",
+      "roles": [
+        "offline_access"
+      ]
+    }
+  ]
+}
