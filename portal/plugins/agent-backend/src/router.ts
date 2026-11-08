@@ -10,7 +10,14 @@ import { AgentEvent, AgentSettings, runAgent } from './agent/runAgent';
 const chatSchema = z.object({
   // O histórico vem do frontend no formato da Messages API; a própria API valida a estrutura.
   messages: z
-    .array(z.object({ role: z.enum(['user', 'assistant']), content: z.unknown() }).passthrough())
+    .array(
+      z
+        .object({
+          role: z.enum(['user', 'assistant']),
+          content: z.union([z.string().min(1), z.array(z.unknown()).min(1)]),
+        })
+        .passthrough(),
+    )
     .min(1)
     .max(200),
   approvals: z.record(z.boolean()).optional(),

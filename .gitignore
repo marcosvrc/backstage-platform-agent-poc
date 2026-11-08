@@ -1,2 +1,5 @@
 # Resultados das execuções dos evals (podem conter respostas completas)
 evals/results/
+
+# macOS
+.DS_Store

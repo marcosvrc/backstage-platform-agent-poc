@@ -163,6 +163,12 @@ async function pool(items, size, fn) {
 
 async function main() {
   const { cases } = YAML.parse(fs.readFileSync(path.join(here, 'cases.yaml'), 'utf8'));
+  // Mensagens com ": " sem aspas viram objetos no YAML; falha antes de gastar chamadas.
+  for (const c of cases) {
+    for (const t of c.turns ?? [c.prompt]) {
+      if (typeof t !== 'string') throw new Error(`Caso ${c.id}: mensagem não é texto (use aspas no YAML)`);
+    }
+  }
   const { token, userRef } = await login();
   const persona = userRef.split('/').pop();
   const repeat = Number(args.repeat);

@@ -2,10 +2,7 @@
   "mcpServers": {
     "backstage": {
       "type": "http",
-      "url": "http://localhost:7007/api/mcp-actions/v1",
-      "headers": {
-        "Authorization": "Bearer ${BACKSTAGE_MCP_TOKEN}"
-      }
+      "url": "http://localhost:7007/api/mcp-actions/v1"
     }
   }
 }

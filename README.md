@@ -124,30 +124,43 @@ Testes: `cd portal/plugins/agent-backend && yarn test` (loop do agente, aprovaç
 
 ## Conectando o agente (Claude Code)
 
-O agente acessa o MCP com um **token estático** (`backend.auth.externalAccess`). O token fica em `portal/app-config.local.yaml`, que **não é versionado**, e só tem acesso aos plugins `mcp-actions`, `catalog` e `scaffolder`.
+O MCP usa **OAuth com o usuário do portal** (Client ID Metadata Documents, `auth.clientIdMetadataDocuments`). Na primeira conexão, o Claude Code abre o navegador. Você aprova o acesso no portal e o cliente recebe um token **seu**, então a política de permissões vale também pelo MCP.
 
 ```bash
-# 1. Gera o token (só na primeira vez) e exporta BACKSTAGE_MCP_TOKEN
-eval "$(./scripts/setup-agent-token.sh)"
-
-# 2. Reinicia o portal para carregar o token
+# 1. Portal rodando
 ./scripts/start-portal.sh
 
-# 3. Em outro terminal, na raiz do repositório (com a variável exportada)
+# 2. Na raiz do repositório, em outro terminal
 claude
+# 3. No Claude Code: /mcp -> backstage -> Authenticate -> aprove no navegador
 ```
 
-O `.mcp.json` na raiz registra o servidor `backstage` no Claude Code. Na primeira vez, aprove o servidor e confira com `/mcp`. Exemplos de perguntas:
+O `.mcp.json` na raiz registra o servidor `backstage`. O refresh token está ligado (`auth.experimentalRefreshToken`), então o login dura até 30 dias sem precisar repetir. Exemplos de perguntas:
 
 - "Quem é dono do payment-service e de quais recursos ele depende?"
 - "Quais serviços do time checkout-team estão em produção?"
 - "Quais templates existem para criar um serviço novo?"
-- "Quais parâmetros o template java-service pede?"
+- "Como faço rollback de um deploy?"
 - "Quais componentes estão fora dos padrões do Platform Handbook?"
 
+Fluxo validado pela linha de comando:
+- autorização, aprovação, troca do código pelo token (PKCE) e renovação do token;
+- com o token, o MCP mostra **16 tools** (inclui `auth.who-am-i`);
+- o `payments-db` fica oculto para o guest.
+
+### Alternativa: token estático (só para desenvolvimento)
+
+Serve para scripts e automações sem navegador. ⚠️ O token estático é uma identidade de **serviço**, e o Backstage libera tudo para serviços: a política de permissões **não se aplica** (o `payments-db` aparece).
+
+```bash
+eval "$(./scripts/setup-agent-token.sh)"   # gera portal/app-config.local.yaml (não versionado)
+./scripts/start-portal.sh
+claude mcp add --transport http backstage-service http://localhost:7007/api/mcp-actions/v1 \
+  --header "Authorization: Bearer $BACKSTAGE_MCP_TOKEN"
+```
+
 > **Observações:**
-> - Com o token do agente, a tool `auth.who-am-i` não aparece, porque o plugin `auth` não está em `accessRestrictions`. São **15 tools**.
-> - ⚠️ O token estático é uma identidade de **serviço**, e o Backstage libera tudo para serviços: pelo MCP, a política de permissões **não se aplica** (o `payments-db` aparece). Use o token só em desenvolvimento. Para respeitar o usuário via MCP, o caminho é a autenticação OAuth do `mcp-actions` (próximo passo). O chat do portal não tem esse problema.
+> - Com o token estático, a tool `auth.who-am-i` não aparece, porque o plugin `auth` não está em `accessRestrictions`. São 15 tools.
 > - `scaffolder.dry-run-template` exige o YAML do template e os arquivos do skeleton, não apenas a referência. Para criar serviços, o agente usa `scaffolder.execute-template` (cria um repositório real e requer `GITHUB_TOKEN` no portal).
 
 ## Permissões (H3)
@@ -194,4 +207,5 @@ node evals/run.mjs --repeat 3      # consistência
   - [x] Chat do agente na home do portal, com aprovação humana
   - [x] Política de permissões e personas de teste
   - [x] Métricas de uso (tokens, latência) no runner dos evals
+    - [x] OAuth no MCP: agentes externos com a identidade do usuário
   - [ ] Rodar os evals com o modelo e fechar o [relatório de go/no-go](docs/relatorio-go-no-go.md)

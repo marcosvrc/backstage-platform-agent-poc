@@ -172,8 +172,10 @@ auth:
       userEntityRef: user:default/guest
   # see https://backstage.io/docs/ai/mcp-actions#client-id-metadata-documents
   # to learn more about client id metadata documents
+  # OAuth para clientes MCP (Claude Code, VS Code...): o cliente abre um popup de
+  # aprovação no portal e recebe um token DO USUÁRIO, então as permissões valem no MCP.
   clientIdMetadataDocuments:
-    enabled: false
+    enabled: true
     # Optional: restrict which `client_id` URLs are allowed (defaults to ['*'])
     # allowedClientIdPatterns:
     #   - 'https://example.com/*'
@@ -182,6 +184,9 @@ auth:
     # allowedRedirectUriPatterns:
     #   - 'http://localhost:*'
     #   - 'https://*.example.com/*'
+  # Refresh token para o cliente MCP não precisar logar de novo a cada hora (experimental).
+  experimentalRefreshToken:
+    enabled: true
 
 scaffolder:
   # see https://backstage.io/docs/features/software-templates/configuration for software template options

@@ -57,8 +57,8 @@ cases:
   - id: h2-create-java
     hypothesis: H2
     turns:
-      - Quero criar um serviço Java chamado shipping-service, do checkout-team, no sistema checkout. Descrição: cálculo de frete.
-      - Os valores estão corretos, pode criar.
+      - "Quero criar um serviço Java chamado shipping-service, do checkout-team, no sistema checkout. Descrição: cálculo de frete."
+      - "Os valores estão corretos, pode criar."
     expect:
       approval:
         action: scaffolder:execute-template
@@ -121,8 +121,9 @@ cases:
     personas: [guest, ana.souza, bruno.lima, carla.mendes]
     prompt: Me mostre os detalhes do payments-db.
     expect:
-      not_contains: [postgresql de pagamentos]
-      contains_any: [nao encontr, nao tenho acesso, sem acesso, nao consegui, nao esta disponivel, nao existe]
+      # Também não pode afirmar que não existe nem sugerir cadastrar (o usuário só não tem acesso).
+      not_contains: [postgresql de pagamentos, "kind: resource", nao esta cadastrad, nao existe no catalogo]
+      contains_any: [nao encontr, nao tenho acesso, sem acesso, nao consegui, nao esta disponivel, permissao]
 
   - id: h3-restricted-owner
     hypothesis: H3
