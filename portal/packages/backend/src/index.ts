@@ -40,10 +40,8 @@ backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
 
 // permission plugin
 backend.add(import('@backstage/plugin-permission-backend'));
-// See https://backstage.io/docs/permissions/getting-started for how to create your own permission policy
-backend.add(
-  import('@backstage/plugin-permission-backend-module-allow-all-policy'),
-);
+// Política da POC: dados restritos só para o time dono, remoções controladas (H3).
+backend.add(import('./permissions/policy'));
 
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
@@ -69,4 +67,5 @@ backend.add(import('@backstage/plugin-signals-backend'));
 // mcp actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
+backend.add(import('@internal/backstage-plugin-agent-backend'));
 backend.start();

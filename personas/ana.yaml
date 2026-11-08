@@ -1,0 +1,5 @@
+# Login guest como ana.souza (platform-team). Uso: ./scripts/start-portal.sh ana
+auth:
+  providers:
+    guest:
+      userEntityRef: user:default/ana.souza

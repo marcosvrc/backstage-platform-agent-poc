@@ -15,6 +15,9 @@ metadata:
   name: payments-db
   title: Payments DB
   description: PostgreSQL de pagamentos
+  labels:
+    # Dados de cartão (PCI): visível só para o time dono (ver portal/packages/backend/src/permissions)
+    acme.example/data-classification: restricted
 spec:
   type: database
   owner: group:payments-team

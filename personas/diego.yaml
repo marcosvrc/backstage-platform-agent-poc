@@ -1,0 +1,5 @@
+# Login guest como diego.rocha (payments-team). Uso: ./scripts/start-portal.sh diego
+auth:
+  providers:
+    guest:
+      userEntityRef: user:default/diego.rocha
