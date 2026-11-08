@@ -37,6 +37,7 @@ export const SidebarContent = NavContentBlueprint.make({
             {nav.take('page:home')}
             {nav.take('page:catalog')}
             {nav.take('page:scaffolder')}
+            {nav.take('page:agent/governance')}
             <SidebarDivider />
             <SidebarScrollWrapper>
               {nav.rest({ sortBy: 'title' })}

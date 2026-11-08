@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { BackstageCredentials, LoggerService } from '@backstage/backend-plugin-api';
 import type { ActionsService, ActionsServiceAction } from '@backstage/backend-plugin-api/alpha';
 import type { JsonObject } from '@backstage/types';
+import type { GatewayRequestExtras } from '../gateway';
 import { actionsToTools, requiresApproval } from './tools';
 
 type MessageParam = Anthropic.Beta.BetaMessageParam;
@@ -36,6 +37,27 @@ export interface AgentUsage {
   cacheWriteTokens: number;
 }
 
+/** Registro de cada ação chamada pelo modelo (vai para a auditoria). */
+export interface ToolCallRecord {
+  toolUseId: string;
+  actionId: string;
+  readOnly: boolean;
+  /** auto: leitura; approved/rejected: decisão do usuário; pending: aguardando. */
+  approval: 'auto' | 'approved' | 'rejected' | 'pending';
+  status: 'ok' | 'error' | 'not_executed';
+  error?: string;
+  latencyMs?: number;
+}
+
+export type RunStatus = 'ok' | 'awaiting_approval' | 'refused' | 'max_iterations';
+
+/** Resumo do pedido, devolvido ao chamador para auditoria e métricas. */
+export interface RunSummary {
+  status: RunStatus;
+  usage: AgentUsage;
+  toolCalls: ToolCallRecord[];
+}
+
 const MAX_TOOL_OUTPUT_CHARS = 60_000;
 
 export async function runAgent(opts: {
@@ -50,16 +72,26 @@ export async function runAgent(opts: {
   approvals?: Record<string, boolean>;
   emit: (event: AgentEvent) => void;
   signal: AbortSignal;
-}): Promise<void> {
+  /** Campos do gateway (atribuição por usuário/time) adicionados a cada chamada. */
+  requestExtras?: GatewayRequestExtras;
+  /** Preenchido durante a execução: permite auditar mesmo se o pedido falhar no meio. */
+  summary?: RunSummary;
+}): Promise<RunSummary> {
   const { client, actionsService, credentials, logger, settings, emit, signal } = opts;
+  const extras = opts.requestExtras ?? {};
   const messages = [...opts.messages];
-  const usage: AgentUsage = {
-    modelCalls: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
+  const summary: RunSummary = opts.summary ?? {
+    status: 'ok',
+    usage: {
+      modelCalls: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    },
+    toolCalls: [],
   };
+  const { usage, toolCalls } = summary;
 
   // As ações são listadas com as credenciais do usuário: o agente só enxerga
   // e executa o que o próprio usuário tem permissão para fazer.
@@ -76,12 +108,26 @@ export async function runAgent(opts: {
         if (!action) {
           return errorResult(toolUse.id, `Ferramenta desconhecida: ${toolUse.name}`);
         }
-        if (requiresApproval(action) && approvals[toolUse.id] !== true) {
+        const needsApproval = requiresApproval(action);
+        let approval: ToolCallRecord['approval'] = 'auto';
+        if (needsApproval) approval = approvals[toolUse.id] === true ? 'approved' : 'rejected';
+        const record: ToolCallRecord = {
+          toolUseId: toolUse.id,
+          actionId: action.id,
+          readOnly: !needsApproval,
+          approval,
+          status: 'not_executed',
+        };
+        toolCalls.push(record);
+        if (record.approval === 'rejected') {
           return errorResult(toolUse.id, 'O usuário NÃO aprovou esta ação. Ela não foi executada.');
         }
         if (!isJsonObject(toolUse.input)) {
+          record.status = 'error';
+          record.error = 'entrada inválida';
           return errorResult(toolUse.id, 'Entrada inválida: era esperado um objeto JSON.');
         }
+        const startedAt = Date.now();
         emit({
           type: 'tool_start',
           id: toolUse.id,
@@ -97,6 +143,8 @@ export async function runAgent(opts: {
             credentials,
           });
           emit({ type: 'tool_end', id: toolUse.id, ok: true });
+          record.status = 'ok';
+          record.latencyMs = Date.now() - startedAt;
           return {
             type: 'tool_result',
             tool_use_id: toolUse.id,
@@ -105,6 +153,9 @@ export async function runAgent(opts: {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logger.warn(`Ação ${action.id} falhou: ${message}`);
+          record.status = 'error';
+          record.error = message.slice(0, 500);
+          record.latencyMs = Date.now() - startedAt;
           emit({ type: 'tool_end', id: toolUse.id, ok: false, error: message });
           return errorResult(toolUse.id, message);
         }
@@ -131,12 +182,13 @@ export async function runAgent(opts: {
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
         output_config: { effort: settings.effort },
+        ...(extras.body ?? {}),
         cache_control: { type: 'ephemeral' },
         system: settings.systemPrompt,
         tools,
         messages,
       },
-      { signal },
+      { signal, headers: extras.headers },
     );
     stream.on('text', delta => emit({ type: 'text', delta }));
 
@@ -160,6 +212,7 @@ export async function runAgent(opts: {
     if (message.stop_reason === 'refusal') {
       // Não anexa a resposta: ela pode conter um tool_use incompleto.
       emit({ type: 'text', delta: '\n\n_Não posso ajudar com esse pedido._' });
+      summary.status = 'refused';
       break;
     }
 
@@ -183,6 +236,16 @@ export async function runAgent(opts: {
         Boolean(x.action && requiresApproval(x.action)),
       );
     if (needApproval.length > 0) {
+      for (const { toolUse, action } of needApproval) {
+        toolCalls.push({
+          toolUseId: toolUse.id,
+          actionId: action.id,
+          readOnly: false,
+          approval: 'pending',
+          status: 'not_executed',
+        });
+      }
+      summary.status = 'awaiting_approval';
       emit({
         type: 'approval_required',
         pending: needApproval.map(({ toolUse, action }) => ({
@@ -193,13 +256,15 @@ export async function runAgent(opts: {
         })),
       });
       emit({ type: 'done', messages, usage });
-      return;
+      return summary;
     }
 
     messages.push({ role: 'user', content: await executeTools(toolUses, {}) });
+    if (iteration === settings.maxIterations - 1) summary.status = 'max_iterations';
   }
 
   emit({ type: 'done', messages, usage });
+  return summary;
 }
 
 function errorResult(toolUseId: string, message: string): ToolResultBlockParam {

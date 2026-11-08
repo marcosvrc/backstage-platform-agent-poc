@@ -35,8 +35,9 @@ Agente (Claude Code / chat no portal)  ──MCP──►  Backstage
 │   └── components/          # serviços (+ TechDocs)
 ├── templates/               # golden paths do Scaffolder (Node e Java)
 ├── evals/                   # conjunto de avaliação do agente (casos + runner)
+├── gateway/litellm/         # config do LiteLLM (gateway de IA)
 ├── personas/                # logins de teste (ana, bruno, diego) para validar permissões
-├── scripts/                 # start-portal, setup-agent-token, check-permissions
+├── scripts/                 # start-portal, setup-gateway, setup-agent-token, check-permissions
 ├── docs/                    # relatório de go/no-go
 ├── docker-compose.yml       # Postgres local
 └── app-config.sqlite.yaml   # override para rodar sem Docker
@@ -189,6 +190,50 @@ Resultado validado:
 | bruno (checkout-team) | oculto (404) | negado (403) |
 | diego (payments-team) | visível (200) | negado (403) |
 
+## Governança de IA e gateway
+
+### Gateway de IA (LiteLLM)
+
+As chamadas do agente ao modelo passam por um **gateway**, escolhido em `agent.gateway.type`:
+
+| Tipo | Destino |
+|---|---|
+| `direct` (padrão) | API da Anthropic, com `ANTHROPIC_API_KEY` ou `agent.anthropicApiKey` |
+| `litellm` | LiteLLM Proxy, rota de *pass-through* `/anthropic`: a Messages API nativa passa sem tradução, então `effort`, fallback e cache continuam funcionando |
+
+```bash
+./scripts/setup-gateway.sh   # sobe o LiteLLM (porta 4000), emite a virtual key do portal e grava agent.gateway no app-config.local.yaml
+./scripts/start-portal.sh
+```
+
+- **Chaves:** a chave da Anthropic fica só no LiteLLM, em `gateway/.env`, que não é versionado. O portal usa uma **virtual key** (`backstage-agent`).
+- **Atribuição:** cada chamada vai com `metadata.user_id` e `litellm_metadata` (usuário e as tags `app:backstage-agent`, `team:<time>` e `request:<id>`). O LiteLLM registra o gasto por usuário final e por tag (`/spend/logs`).
+- **Rastreabilidade:** a tag `request:<id>` é o mesmo ID da auditoria do Backstage.
+- **Painel do LiteLLM:** http://localhost:4000/ui (login com a `LITELLM_MASTER_KEY` de `gateway/.env`).
+
+**Trocar de gateway** (Kong, Portkey, Envoy etc.):
+1. Implemente a interface `ModelGateway` em `portal/plugins/agent-backend/src/gateway/<nome>.ts`. São quatro métodos: o cliente do SDK, a atribuição por chamada, a verificação de saúde e a descrição.
+2. Registre a nova classe em `GATEWAY_FACTORIES` (`gateway/index.ts`).
+3. Mude `agent.gateway.type`.
+
+O resto do agente não muda.
+
+### Painel "Governança de IA"
+
+Fica em http://localhost:3000/governanca-ia e só o **platform-team** acessa (permissão `agent.governance.read`).
+
+| Aba | Conteúdo |
+|---|---|
+| Visão geral | Pedidos, usuários, tokens, custo estimado, latência, erros e ações de escrita; pedidos por dia; uso por time, por usuário e por ação |
+| Auditoria | Cada pedido: quem fez, status, ações executadas, aprovações e recusas, tokens e latência |
+| Inventário | Ativos de IA do catálogo (`catalog/ai/ai.yaml`): modelos, gateways, agentes e servidores MCP, com dono, risco, acesso a dados e aprovação humana |
+| Políticas | Modelo, gateway (com verificação de saúde), regras, e ações disponíveis com indicação das que exigem aprovação |
+| Qualidade | Histórico das rodadas de evals |
+
+- **Dados:** os pedidos e as ações ficam no banco do plugin (`agent_requests` e `agent_tool_calls`). Ações de escrita também vão para o log de auditoria do Backstage (`agent-write-action`).
+- **Perguntas:** `agent.governance.storePrompts` grava o início de cada pergunta. Está ligado na POC; avalie a política de dados antes de ligar em produção.
+- **Custo:** preencha `agent.governance.pricing` (USD por milhão de tokens) com a tabela vigente. Sem isso, o painel mostra só os tokens.
+
 ## Avaliação (evals)
 
 `evals/cases.yaml` tem 16 casos cobrindo H1 a H4, conformidade e segurança. O runner envia cada caso ao chat como o usuário logado e avalia a resposta com checagens determinísticas. Detalhes em [evals/README.md](evals/README.md).
@@ -197,7 +242,10 @@ Resultado validado:
 node evals/run.mjs                 # todos os casos (chama o modelo de verdade: tem custo)
 node evals/run.mjs --filter H4     # por hipótese ou id
 node evals/run.mjs --repeat 3      # consistência
+node evals/run.mjs --import evals/results/<arquivo>.json   # publica uma rodada antiga no painel
 ```
+
+Cada rodada é publicada no painel de governança, na aba Qualidade. Use `--no-publish` para não publicar.
 
 ## Roadmap
 
@@ -208,4 +256,6 @@ node evals/run.mjs --repeat 3      # consistência
   - [x] Política de permissões e personas de teste
   - [x] Métricas de uso (tokens, latência) no runner dos evals
     - [x] OAuth no MCP: agentes externos com a identidade do usuário
+  - [x] Governança de IA (fase 1): gateway LiteLLM plugável, auditoria, painel e inventário de IA no catálogo
+  - [ ] Governança de IA (fase 2): orçamento por time no LiteLLM, custo vindo do gateway no painel, alertas
   - [ ] Rodar os evals com o modelo e fechar o [relatório de go/no-go](docs/relatorio-go-no-go.md)

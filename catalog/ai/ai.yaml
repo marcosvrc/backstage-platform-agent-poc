@@ -1,0 +1,88 @@
+# Inventário de IA: modelos, gateways, agentes e servidores MCP usados na Acme.
+# O painel "Governança de IA" lista estas entidades (filtra pelos spec.type abaixo).
+#
+# Annotations de governança (convenção da POC):
+#   acme.example/ai-risk-level        low | medium | high
+#   acme.example/ai-data-access       dados que o ativo pode acessar
+#   acme.example/ai-human-approval    quando há aprovação humana
+#   acme.example/ai-provider          provedor do modelo
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: claude-opus-5-5
+  title: Claude Opus 5.5
+  description: Modelo de linguagem da Anthropic usado pelo Platform Agent
+  tags: [ai, llm]
+  annotations:
+    acme.example/ai-provider: anthropic
+    acme.example/ai-risk-level: medium
+    acme.example/ai-data-access: metadados do catálogo e TechDocs (sem dados de clientes)
+  links:
+    - url: https://docs.anthropic.com
+      title: Documentação do provedor
+spec:
+  type: ai-model
+  owner: group:platform-team
+  system: developer-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: litellm-gateway
+  title: LiteLLM Gateway
+  description: Gateway de IA da Acme. Centraliza as chaves dos provedores, aplica orçamento por chave e registra o gasto por usuário e time
+  tags: [ai, gateway]
+  annotations:
+    acme.example/ai-risk-level: medium
+  links:
+    - url: http://localhost:4000/ui
+      title: Painel do LiteLLM
+spec:
+  type: ai-gateway
+  owner: group:platform-team
+  system: developer-platform
+  dependsOn:
+    - resource:claude-opus-5-5
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: platform-agent
+  title: Platform Agent
+  description: Agente do portal do desenvolvedor. Consulta o catálogo e o TechDocs, verifica conformidade e cria serviços pelos golden paths
+  tags: [ai, agent]
+  annotations:
+    acme.example/ai-risk-level: medium
+    acme.example/ai-data-access: catálogo e TechDocs, com as permissões do usuário logado
+    acme.example/ai-human-approval: ações de escrita (executar template, registrar e remover entidades)
+spec:
+  type: ai-agent
+  lifecycle: experimental
+  owner: group:platform-team
+  system: developer-platform
+  dependsOn:
+    - resource:litellm-gateway
+    - resource:claude-opus-5-5
+  consumesApis:
+    - backstage-mcp
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: backstage-mcp
+  title: Backstage MCP
+  description: Servidor MCP do portal (Actions Registry). Acesso por OAuth com a identidade do usuário
+  tags: [ai, mcp]
+  annotations:
+    acme.example/ai-risk-level: medium
+    acme.example/ai-data-access: catálogo, scaffolder e TechDocs, com as permissões do usuário
+    acme.example/ai-human-approval: definida pelo cliente MCP (no chat do portal, ações de escrita)
+spec:
+  type: mcp
+  lifecycle: experimental
+  owner: group:platform-team
+  system: developer-platform
+  definition: |
+    Endpoint: http://localhost:7007/api/mcp-actions/v1 (Streamable HTTP)
+    Autenticação: OAuth (Client ID Metadata Documents) ou token estático (só desenvolvimento)
+    Ações: catalog:*, scaffolder:*, agent:check-service-compliance, agent:search-techdocs, agent:read-techdocs-page

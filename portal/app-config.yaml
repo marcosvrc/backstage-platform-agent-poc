@@ -215,6 +215,23 @@ agent:
   effort: medium
   maxIterations: 12
   defaultRepoOwner: marcosvrc
+  # Por onde as chamadas ao modelo passam (src/gateway no agent-backend).
+  #   direct  -> API da Anthropic, chave em ANTHROPIC_API_KEY ou agent.anthropicApiKey
+  #   litellm -> LiteLLM Proxy (pass-through /anthropic). Configure com ./scripts/setup-gateway.sh,
+  #              que grava baseUrl e a virtual key em app-config.local.yaml.
+  gateway:
+    type: direct
+  governance:
+    # Grava o início de cada pergunta na auditoria (cuidado com dados sensíveis).
+    storePrompts: true
+    # Preço em USD por milhão de tokens, para o painel estimar custo.
+    # Preencha com a tabela de preços vigente da Anthropic (ou da sua negociação).
+    # pricing:
+    #   claude-opus-5-5:
+    #     input: 0
+    #     output: 0
+    #     cacheRead: 0
+    #     cacheWrite: 0
 
 permission:
   # setting this to `false` will disable permissions

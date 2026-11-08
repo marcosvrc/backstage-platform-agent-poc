@@ -79,7 +79,7 @@ O cache de prompt funciona bem: o prompt do sistema e as ferramentas (~10 mil to
 - **Escala do catálogo.** Com milhares de entidades, as consultas abertas ficam grandes. O agente vai precisar de filtros e paginação, ou de uma ação de busca.
 - **Busca no TechDocs.** É simples, por termos. Com muitos documentos, vai precisar de busca semântica ou do search backend.
 - **Custo.** Depende do volume de uso. A estimativa sai das métricas de tokens acima.
-- **Auditoria.** Hoje só existem os logs do backend. Falta registrar quem aprovou cada ação de escrita.
+- **Auditoria.** Cada pedido, ação e aprovação é gravado no banco do agente e no auditor do Backstage, e aparece no painel Governança de IA.
 
 ## Recomendação
 
@@ -100,7 +100,8 @@ Ressalva: o catálogo é pequeno (6 componentes). Antes de produção, repita os
 
 ## Próximos passos (se go)
 
-1. Registrar em auditoria as aprovações de ações de escrita.
-2. Criar mais ações próprias: status de deploy, incidentes, custos e scorecards.
-3. Indexar o TechDocs no CI e trocar a busca por termos pelo search backend.
-4. Rodar os evals no CI a cada mudança de prompt, ferramenta ou modelo.
+1. ~~Registrar em auditoria as aprovações de ações de escrita.~~ Feito na governança de IA (fase 1), com o gateway LiteLLM e o painel.
+2. Fase 2 da governança: orçamento por time no LiteLLM, custo do gateway no painel e alertas de consumo.
+3. Criar mais ações próprias: status de deploy, incidentes, custos e scorecards.
+4. Indexar o TechDocs no CI e trocar a busca por termos pelo search backend.
+5. Rodar os evals no CI a cada mudança de prompt, ferramenta ou modelo.

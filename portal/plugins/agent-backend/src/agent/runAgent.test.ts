@@ -152,3 +152,52 @@ describe('runAgent', () => {
     expect(requests[0].messages.at(-1).content[0]).toMatchObject({ is_error: true });
   });
 });
+
+describe('runAgent: resumo para auditoria', () => {
+  it('registra leitura automática, ação pendente e extras do gateway', async () => {
+    const { base, requests } = setup([
+      {
+        stop_reason: 'tool_use',
+        content: [toolUse('t1', 'catalog:get-catalog-entity', { name: 'x' })],
+      },
+      {
+        stop_reason: 'tool_use',
+        content: [toolUse('w1', 'scaffolder:execute-template', {})],
+      },
+    ]);
+    const summary = await runAgent({
+      ...base,
+      messages: [{ role: 'user', content: 'cria' }],
+      requestExtras: { body: { metadata: { user_id: 'u1' } }, headers: { 'x-test': '1' } },
+    });
+    expect(summary.status).toBe('awaiting_approval');
+    expect(summary.usage.modelCalls).toBe(2);
+    expect(summary.toolCalls).toEqual([
+      expect.objectContaining({ actionId: 'catalog:get-catalog-entity', approval: 'auto', status: 'ok' }),
+      expect.objectContaining({ actionId: 'scaffolder:execute-template', approval: 'pending', status: 'not_executed' }),
+    ]);
+    expect(requests[0].metadata).toEqual({ user_id: 'u1' });
+  });
+
+  it('registra aprovação e recusa ao retomar', async () => {
+    const { base } = setup([{ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' } as any] }]);
+    const summary = await runAgent({
+      ...base,
+      messages: [
+        { role: 'user', content: 'cria e remove' },
+        {
+          role: 'assistant',
+          content: [
+            toolUse('w1', 'scaffolder:execute-template', {}),
+            toolUse('w2', 'scaffolder:execute-template', {}),
+          ],
+        },
+      ],
+      approvals: { w1: true, w2: false },
+    });
+    expect(summary.toolCalls.map(t => [t.toolUseId, t.approval, t.status])).toEqual([
+      ['w1', 'approved', 'ok'],
+      ['w2', 'rejected', 'not_executed'],
+    ]);
+  });
+});

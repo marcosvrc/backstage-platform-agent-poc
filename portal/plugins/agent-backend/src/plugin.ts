@@ -3,6 +3,9 @@ import { actionsRegistryServiceRef, actionsServiceRef } from '@backstage/backend
 import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import { registerPlatformActions } from './actions';
 import { buildSystemPrompt } from './agent/prompt';
+import { createGateway } from './gateway';
+import { GovernanceStore } from './governance/store';
+import { agentPermissions } from './permissions';
 import { createRouter } from './router';
 
 /**
@@ -20,6 +23,11 @@ export const agentPlugin = createBackendPlugin({
         logger: coreServices.logger,
         httpAuth: coreServices.httpAuth,
         httpRouter: coreServices.httpRouter,
+        userInfo: coreServices.userInfo,
+        permissions: coreServices.permissions,
+        permissionsRegistry: coreServices.permissionsRegistry,
+        auditor: coreServices.auditor,
+        database: coreServices.database,
         actionsService: actionsServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
         catalog: catalogServiceRef,
@@ -30,6 +38,11 @@ export const agentPlugin = createBackendPlugin({
         logger,
         httpAuth,
         httpRouter,
+        userInfo,
+        permissions,
+        permissionsRegistry,
+        auditor,
+        database,
         actionsService,
         actionsRegistry,
         catalog,
@@ -37,6 +50,7 @@ export const agentPlugin = createBackendPlugin({
       }) {
         // Ações próprias da plataforma (conformidade e TechDocs), expostas também via MCP.
         registerPlatformActions({ actionsRegistry, catalog, urlReader });
+        permissionsRegistry.addPermissions(agentPermissions);
 
         const settings = {
           model: config.getOptionalString('agent.model') ?? 'claude-opus-5-5',
@@ -53,18 +67,46 @@ export const agentPlugin = createBackendPlugin({
             defaultRepoOwner: config.getOptionalString('agent.defaultRepoOwner'),
           }),
         };
+        const gateway = createGateway(config);
+        const store = await GovernanceStore.create(database);
+
+        const pricingConfig = config.getOptionalConfig('agent.governance.pricing');
+        const pricing = Object.fromEntries(
+          (pricingConfig?.keys() ?? []).map(model => {
+            const c = pricingConfig!.getConfig(model);
+            return [
+              model,
+              {
+                input: c.getOptionalNumber('input'),
+                output: c.getOptionalNumber('output'),
+                cacheRead: c.getOptionalNumber('cacheRead'),
+                cacheWrite: c.getOptionalNumber('cacheWrite'),
+              },
+            ];
+          }),
+        );
 
         httpRouter.use(
           await createRouter({
             httpAuth,
+            userInfo,
+            permissions,
+            auditor,
             actionsService,
             logger,
             settings,
-            anthropicApiKey: config.getOptionalString('agent.anthropicApiKey'),
+            gateway,
+            store,
+            governance: {
+              storePrompts: config.getOptionalBoolean('agent.governance.storePrompts') ?? false,
+              pricing,
+            },
           }),
         );
         httpRouter.addAuthPolicy({ path: '/health', allow: 'unauthenticated' });
-        logger.info(`Platform Agent pronto (modelo ${settings.model}, effort ${settings.effort})`);
+        logger.info(
+          `Platform Agent pronto (modelo ${settings.model}, effort ${settings.effort}, gateway ${gateway.type})`,
+        );
       },
     });
   },

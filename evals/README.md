@@ -11,7 +11,10 @@ node evals/run.mjs                      # todos os casos aplicáveis ao usuário
 node evals/run.mjs --filter H4          # por hipótese (H1..H4, COMP, SAFE) ou parte do id
 node evals/run.mjs --repeat 3           # repete cada caso para medir consistência
 node evals/run.mjs --url http://localhost:7008 --concurrency 2
+node evals/run.mjs --import evals/results/<arquivo>.json   # publica uma rodada antiga no painel
 ```
+
+Ao terminar, o runner publica o resumo no painel **Governança de IA**, na aba Qualidade. Para isso, o usuário precisa ser do platform-team. Use `--no-publish` para não publicar.
 
 O runner loga com o guest do portal. Para avaliar como outra pessoa, inicie o portal com a persona (`./scripts/start-portal.sh diego`): os casos com `personas:` só rodam para os usuários listados (ex.: `h3-restricted-owner` só para o diego).
 

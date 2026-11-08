@@ -3,3 +3,6 @@ evals/results/
 
 # macOS
 .DS_Store
+
+# Segredos do gateway de IA (gerado por scripts/setup-gateway.sh)
+gateway/.env

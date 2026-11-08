@@ -1,5 +1,9 @@
 import { createBackendModule } from '@backstage/backend-plugin-api';
 import {
+  agentEvalsPublishPermission,
+  agentGovernanceReadPermission,
+} from '@internal/backstage-plugin-agent-backend';
+import {
   catalogEntityDeletePermission,
   catalogEntityReadPermission,
   catalogLocationDeletePermission,
@@ -32,7 +36,8 @@ export const PLATFORM_TEAM = 'group:default/platform-team';
  *    visíveis para o time dono.
  * 2. Remover entidades do catálogo: só o time dono.
  * 3. Remover locations (ação `catalog:unregister-entity`): só o time de plataforma.
- * 4. O resto é permitido.
+ * 4. Painel de governança de IA e publicação de evals: só o time de plataforma.
+ * 5. O resto é permitido.
  *
  * O agente age com as credenciais do usuário, então essas regras valem igualmente
  * para o portal, para o chat e para o MCP.
@@ -62,7 +67,11 @@ export class AcmePermissionPolicy implements PermissionPolicy {
       );
     }
 
-    if (isPermission(request.permission, catalogLocationDeletePermission)) {
+    if (
+      isPermission(request.permission, catalogLocationDeletePermission) ||
+      isPermission(request.permission, agentGovernanceReadPermission) ||
+      isPermission(request.permission, agentEvalsPublishPermission)
+    ) {
       return {
         result: ownership.includes(PLATFORM_TEAM) ? AuthorizeResult.ALLOW : AuthorizeResult.DENY,
       };

@@ -14,5 +14,24 @@ services:
       interval: 5s
       retries: 10
 
+  # Gateway de IA (opcional). Suba com: ./scripts/setup-gateway.sh
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.90.2
+    container_name: backstage-poc-litellm
+    profiles: [gateway]
+    command: ['--config', '/app/config.yaml', '--port', '4000']
+    env_file:
+      - path: gateway/.env # gerado pelo setup-gateway.sh (não versionado)
+        required: false
+    environment:
+      DATABASE_URL: postgresql://backstage:backstage@postgres:5432/litellm
+    ports:
+      - '4000:4000'
+    volumes:
+      - ./gateway/litellm/config.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:

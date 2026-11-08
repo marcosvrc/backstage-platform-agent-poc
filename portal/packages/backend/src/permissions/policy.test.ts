@@ -7,6 +7,7 @@ import {
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import { PolicyQueryUser } from '@backstage/plugin-permission-node';
 import { taskCreatePermission } from '@backstage/plugin-scaffolder-common/alpha';
+import { agentGovernanceReadPermission } from '@internal/backstage-plugin-agent-backend';
 import { AcmePermissionPolicy, PLATFORM_TEAM, RESTRICTED_LABEL } from './policy';
 
 const userIn = (name: string, group: string): PolicyQueryUser => ({
@@ -61,6 +62,12 @@ describe('AcmePermissionPolicy', () => {
     expect(await policy.handle(perm, bruno)).toEqual({ result: AuthorizeResult.DENY });
     expect(await policy.handle(perm, ana)).toEqual({ result: AuthorizeResult.ALLOW });
     expect(await policy.handle(perm)).toEqual({ result: AuthorizeResult.DENY });
+  });
+
+  it('painel de governança de IA: só o time de plataforma', async () => {
+    const perm = { permission: agentGovernanceReadPermission };
+    expect(await policy.handle(perm, bruno)).toEqual({ result: AuthorizeResult.DENY });
+    expect(await policy.handle(perm, ana)).toEqual({ result: AuthorizeResult.ALLOW });
   });
 
   it('demais permissões (ex.: criar serviço pelo template) são permitidas', async () => {

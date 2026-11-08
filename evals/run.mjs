@@ -25,6 +25,8 @@ const { values: args } = parseArgs({
     filter: { type: 'string' },
     repeat: { type: 'string', default: '1' },
     concurrency: { type: 'string', default: '3' },
+    'no-publish': { type: 'boolean', default: false },
+    import: { type: 'string' },
   },
 });
 const API = `${args.url}/api`;
@@ -161,7 +163,51 @@ async function pool(items, size, fn) {
   return results;
 }
 
+/** Publica o resumo de uma rodada no painel de governança (aba Qualidade). */
+async function publish(token, { results, passed, byHyp, usage, createdAt }) {
+  // Inválida = falhou antes de chamar o modelo (ex.: sem crédito, gateway fora do ar).
+  const invalid = results.filter(r => !r.ok && (r.usage?.modelCalls ?? 0) === 0).length;
+  const validLat = results
+    .filter(r => r.ok || (r.usage?.modelCalls ?? 0) > 0)
+    .map(r => r.latencyMs)
+    .sort((a, b) => a - b);
+  const p = q => validLat[Math.min(validLat.length - 1, Math.floor(q * validLat.length))];
+  const res = await fetch(`${API}/agent/governance/evals`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      total: results.length,
+      passed,
+      invalid,
+      byHypothesis: byHyp,
+      usage,
+      latencyP50Ms: validLat.length ? p(0.5) : undefined,
+      latencyP90Ms: validLat.length ? p(0.9) : undefined,
+      createdAt,
+    }),
+  }).catch(err => ({ ok: false, status: err.message }));
+  console.log(
+    res.ok
+      ? 'Publicado no painel de governança (aba Qualidade).'
+      : `Não publicado no painel (${res.status}). Use --no-publish para pular.`,
+  );
+}
+
+/** --import: publica no painel uma rodada já gravada em evals/results. */
+async function importRun(file) {
+  const { token } = await login();
+  const run = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const passed = run.results.filter(r => r.ok).length;
+  console.log(`${path.basename(file)}: ${passed}/${run.results.length}`);
+  // Data da rodada a partir do nome do arquivo (2026-11-08T11-04-29-772Z-guest.json).
+  const m = path.basename(file).match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/);
+  const createdAt = m ? `${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z` : undefined;
+  await publish(token, { results: run.results, passed, byHyp: run.byHyp, usage: run.usage, createdAt });
+}
+
 async function main() {
+  if (args.import) return importRun(args.import);
+
   const { cases } = YAML.parse(fs.readFileSync(path.join(here, 'cases.yaml'), 'utf8'));
   // Mensagens com ": " sem aspas viram objetos no YAML; falha antes de gastar chamadas.
   for (const c of cases) {
@@ -228,6 +274,8 @@ async function main() {
   );
   fs.writeFileSync(file, JSON.stringify({ userRef, byHyp, usage, results }, null, 2));
   console.log(`\nResultado completo: ${path.relative(process.cwd(), file)}`);
+
+  if (!args['no-publish']) await publish(token, { results, passed, byHyp, usage });
   process.exitCode = passed === results.length ? 0 : 1;
 }
 

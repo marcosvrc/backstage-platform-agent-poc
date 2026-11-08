@@ -1,6 +1,6 @@
 import { createFrontendPlugin, PageBlueprint } from '@backstage/frontend-plugin-api';
-import { RiSparkling2Line } from '@remixicon/react';
-import { rootRouteRef } from './routes';
+import { RiShieldCheckLine, RiSparkling2Line } from '@remixicon/react';
+import { governanceRouteRef, rootRouteRef } from './routes';
 
 /** Página do Platform Agent, montada na raiz do portal. */
 export const agentPage = PageBlueprint.make({
@@ -15,10 +15,25 @@ export const agentPage = PageBlueprint.make({
   },
 });
 
+/** Painel de governança de IA (visível para o time de plataforma). */
+export const governancePage = PageBlueprint.make({
+  name: 'governance',
+  params: {
+    path: '/governanca-ia',
+    title: 'Governança de IA',
+    icon: <RiShieldCheckLine size={20} />,
+    routeRef: governanceRouteRef,
+    noHeader: true,
+    loader: () =>
+      import('./components/GovernancePage').then(m => <m.GovernancePage />),
+  },
+});
+
 export const agentPlugin = createFrontendPlugin({
   pluginId: 'agent',
-  extensions: [agentPage],
+  extensions: [agentPage, governancePage],
   routes: {
     root: rootRouteRef,
+    governance: governanceRouteRef,
   },
 });
