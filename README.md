@@ -88,6 +88,7 @@ Variações:
 ./scripts/start-portal.sh bruno      # login como bruno.lima (checkout-team); também: ana, diego
 ./scripts/start-portal.sh --sqlite   # sem Docker, dados em memória
 ./scripts/start-portal.sh --keycloak # SSO e diretório pelo Keycloak (veja abaixo)
+./scripts/start-portal.sh --keycloak --github   # cenário real: SSO + catálogo dos repositórios da empresa
 ```
 
 > O `--config` do `backstage-cli` **substitui** o `app-config.yaml` em vez de somar. Por isso use o script, que monta a lista completa (`app-config.yaml` + `app-config.local.yaml` + overrides).
@@ -125,6 +126,46 @@ Detalhes do realm (`keycloak/realm-acme.json`) que valem também para o Keycloak
 - usuários criados por importação de realm não recebem os papéis padrão sozinhos.
 
 **Para produção:** troque as URLs de `app-config.keycloak.yaml` pelas do Keycloak da empresa (com HTTPS), registre o callback `https://<backend>/api/auth/oidc/handler/frame` no client e injete os segredos pelo cofre. Em produção, o backend recusa o login guest.
+
+## Catálogo real (GitHub)
+
+Com `--github`, o catálogo importa o `catalog-info.yaml` da raiz de cada repositório da organização no GitHub. O conector é o `catalog.providers.github` (módulo `catalog-backend-module-github`), que roda a cada 30 minutos. O catálogo fictício da Acme sai, e os templates (golden paths) continuam.
+
+| Modo | Pessoas e times | Serviços, APIs, sistemas |
+|---|---|---|
+| padrão (dev) | `catalog/org/org.yaml` | catálogo fictício da Acme |
+| `--keycloak` | Keycloak | catálogo fictício da Acme |
+| `--keycloak --github` (real) | Keycloak | repositórios da organização no GitHub |
+
+O usuário `guest` continua nos três modos, para evals e scripts locais. Os evals usam o catálogo fictício, então rode-os no modo padrão ou só com `--keycloak`. O `start-portal.sh` monta a lista de origens do catálogo para cada modo em `.portal/app-config.catalog-locations.yaml`, que não é versionado.
+
+**Regra de origem:** repositórios não podem criar `User` nem `Group`; pessoas e times vêm só do diretório. Repositório que tentar será ignorado nessa entidade, e o diagnóstico avisa.
+
+### GitHub App (credencial do portal)
+
+O portal lê os repositórios com um **GitHub App** da organização, e não com o token de uma pessoa:
+
+1. Na organização: **Settings → Developer settings → GitHub Apps → New GitHub App**.
+   - Nome: por exemplo, `backstage-portal`.
+   - Homepage URL: a URL do portal.
+   - **Webhook**: desmarque *Active* (o portal não usa webhooks).
+   - **Repository permissions**: `Contents: Read-only` (`Metadata: Read-only` vem junto). Para os templates criarem repositórios na organização, adicione depois `Administration`, `Contents` e `Workflows` com escrita.
+   - *Where can this GitHub App be installed?* **Only on this account**.
+2. Depois de criar, anote o **App ID** e o **Client ID**, gere um **client secret** e, em *Private keys*, **Generate a private key** (baixa um `.pem`).
+3. **Install App** na organização: *All repositories*, ou só alguns para um piloto.
+4. Copie `github/.env.example` para `github/.env`, preencha os campos e salve o `.pem` como `github/app-private-key.pem`. Os dois arquivos não são versionados.
+5. Rode o diagnóstico (só leitura):
+   ```bash
+   node scripts/check-github.mjs
+   ```
+   Ele confere o App, as permissões e a instalação. Também mostra quantos repositórios têm `catalog-info.yaml`, que tipos de entidade eles declaram e quais donos (`spec.owner`) aparecem. Por fim, aponta problemas: YAML inválido, entidade sem dono, `User` ou `Group` em repositório.
+6. Inicie com `./scripts/start-portal.sh --keycloak --github`.
+
+**Donos:** cada `spec.owner` dos repositórios precisa existir como Group no Keycloak, com o mesmo nome. Senão, a entidade entra sem dono, e a política de acesso, o orçamento e o painel não a associam a um time. A lista de donos impressa pelo diagnóstico serve para conferir isso com o diretório.
+
+**Piloto:** para começar por alguns repositórios, use `filters.repository` (regex no nome) ou `filters.topic.include` em `app-config.github.yaml`.
+
+**Repositórios sem `catalog-info.yaml`** ficam de fora. Podem entrar aos poucos: o agente cria o serviço já com o arquivo (pelos templates), e repositórios existentes podem ser registrados em "Registrar componente" no portal.
 
 ## Servidor MCP
 
@@ -362,4 +403,5 @@ Cada rodada é publicada no painel de governança, na aba Qualidade. Use `--no-p
   - [x] SSO e diretório com Keycloak (OIDC + importação de usuários e grupos)
   - [x] LiteLLM corporativo: rota `/v1/messages` (Claude via Bedrock), recursos configuráveis, keys de team dos admins e diagnóstico (`scripts/check-litellm.mjs`)
   - [x] Conectores: modelo de IA em módulos (`agent-node` + módulos LiteLLM e Anthropic), SSO por OIDC configurável e [mapa de integrações](docs/integracoes.md)
-  - [ ] Segredos, deploy e catálogo real
+  - [x] Catálogo real: repositórios da organização no GitHub via GitHub App, com diagnóstico (`scripts/check-github.mjs`)
+  - [ ] Segredos e deploy

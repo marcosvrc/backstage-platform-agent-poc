@@ -39,6 +39,9 @@ backend.add(
 
 // See https://backstage.io/docs/features/software-catalog/configuration#subscribing-to-catalog-errors
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
+// Catálogo real: catalog-info.yaml dos repositórios da organização (catalog.providers.github).
+// Sem config, não faz nada.
+backend.add(import('@backstage/plugin-catalog-backend-module-github'));
 // Usuários e times vindos do Keycloak (catalog.providers.keycloakOrg). Sem config, não faz nada.
 backend.add(
   import('@backstage-community/plugin-catalog-backend-module-keycloak'),

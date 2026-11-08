@@ -1,0 +1,42 @@
+# Catálogo real: importa os catalog-info.yaml dos repositórios da organização no GitHub.
+#
+# Uso: ./scripts/start-portal.sh --keycloak --github
+#
+# Credenciais (não versionadas): github/.env (veja github/.env.example) e
+# github/app-private-key.pem, exportados pelo start-portal.sh. Em produção, injete
+# as mesmas variáveis pelo cofre de segredos.
+#
+# Só entram repositórios que já têm catalog-info.yaml na raiz. Os demais podem ser
+# registrados aos poucos (pelo agente ou em "Registrar componente" no portal).
+
+integrations:
+  github:
+    - host: github.com
+      # GitHub App da plataforma: leitura de conteúdo e metadados nos repositórios da organização.
+      apps:
+        - appId: ${GITHUB_APP_ID}
+          clientId: ${GITHUB_APP_CLIENT_ID}
+          clientSecret: ${GITHUB_APP_CLIENT_SECRET}
+          privateKey: ${GITHUB_APP_PRIVATE_KEY}
+          # Usa o App só na organização da empresa.
+          allowedInstallationOwners: ['${GITHUB_ORG}']
+      # Opcional: token para o que estiver fora da organização (ex.: repositórios pessoais nos templates).
+      token: ${GITHUB_TOKEN}
+
+catalog:
+  providers:
+    github:
+      empresa:
+        organization: ${GITHUB_ORG}
+        catalogPath: /catalog-info.yaml
+        filters:
+          allowForks: false
+          allowArchived: false
+          # Para começar por um piloto, limite por nome ou por tópico do repositório:
+          # repository: '^(checkout|payments)-.*$'
+          # topic:
+          #   include: [backstage]
+        schedule:
+          frequency: { minutes: 30 }
+          timeout: { minutes: 5 }
+          initialDelay: { seconds: 15 }

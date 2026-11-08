@@ -202,17 +202,25 @@ catalog:
   import:
     entityFilename: catalog-info.yaml
     pullRequestBranchName: backstage-integration
+  # Pessoas e times vêm só do diretório (Keycloak) ou dos arquivos de org abaixo:
+  # repositórios não podem criar User nem Group.
   rules:
-    - allow: [Component, System, API, Resource, Location, Domain, Group, User, Template]
+    - allow: [Component, System, API, Resource, Location, Domain, Template]
+  # O scripts/start-portal.sh monta esta lista conforme o modo (--keycloak, --github).
+  # Esta é a lista padrão, usada quando o portal sobe sem o script.
   locations:
     # Catálogo fictício da POC (caminhos relativos a packages/backend)
     - type: file
       target: ../../../catalog/all.yaml
-    # Times e pessoas (no modo --keycloak vêm do diretório, veja app-config.keycloak.yaml)
+    # Times e pessoas (no modo --keycloak vêm do diretório)
     - type: file
       target: ../../../catalog/org/org.yaml
+      rules:
+        - allow: [Group, User]
     - type: file
       target: ../../../catalog/org/guest.yaml
+      rules:
+        - allow: [User]
     # Golden paths (templates do Scaffolder)
     - type: file
       target: ../../../templates/all.yaml

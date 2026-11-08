@@ -12,6 +12,7 @@ Onde o próprio Backstage já tem um ponto de troca (banco de dados, auditoria, 
 | Orçamento de IA por time | `GatewayBudgets`, recurso opcional do conector de modelo | LiteLLM (`adminKey` ou `teamKeys`) | Vem junto com o conector. Sem ele, o orçamento fica desligado e o resto funciona | Junto com o conector |
 | Login (SSO) | OIDC, padrão aberto (provider `oidc` do auth-backend) | Keycloak (`app-config.keycloak.yaml`) | Só configuração: Entra ID, Okta, Google ou outro OIDC | Baixo |
 | Diretório (pessoas e times) | Entity provider do catálogo (`User` e `Group`) | `catalog-backend-module-keycloak` | Trocar o módulo: `msgraph` (Entra ID), `ldap`, `gcp`, GitHub ou GitLab org | Baixo |
+| Fonte do catálogo (serviços, APIs, sistemas) | Entity provider do catálogo + `catalog-info.yaml` (formato do Backstage) | `catalog-backend-module-github` com GitHub App (`app-config.github.yaml`) | Trocar o módulo: `gitlab`, `bitbucket-cloud`, `bitbucket-server`, `azure` (Azure DevOps). Os `catalog-info.yaml` não mudam | Baixo |
 | Banco de dados | `coreServices.database` (knex) | Postgres (SQLite em teste) | Configuração (`backend.database`). O SQL do agente é portável | Baixo |
 | Auditoria | `coreServices.auditor` | Log do backend | Implementar o serviço de auditoria para Splunk, Datadog, SIEM etc. | Médio |
 | Alertas | Plugin de notificações (processors) | Sino do Backstage | Módulos prontos de e-mail e Slack, ou um processor próprio | Baixo |
@@ -98,6 +99,20 @@ Antes de trocar, garanta que:
 - **Os times mantenham os mesmos nomes de `Group`**, ou ajuste `organization.platformTeam`, `agent.governance.budgets.teams` e `agent.gateway.teamKeys`.
 - **Cada `User` tenha `spec.profile.email`**, que é usado pelo login.
 
+## Fonte do catálogo: trocar o provedor de repositórios
+
+O conteúdo do catálogo é o `catalog-info.yaml` de cada repositório, que é formato do Backstage e não depende do provedor. Trocar o GitHub por outro provedor significa trocar o módulo e a credencial em `integrations`:
+
+| Provedor | Módulo do catálogo | Chave em `catalog.providers` |
+|---|---|---|
+| GitHub (atual) | `@backstage/plugin-catalog-backend-module-github` | `github` |
+| GitLab | `@backstage/plugin-catalog-backend-module-gitlab` | `gitlab` |
+| Bitbucket Cloud | `@backstage/plugin-catalog-backend-module-bitbucket-cloud` | `bitbucketCloud` |
+| Bitbucket Server | `@backstage/plugin-catalog-backend-module-bitbucket-server` | `bitbucketServer` |
+| Azure DevOps | `@backstage/plugin-catalog-backend-module-azure` | `azureDevOps` |
+
+As regras valem para qualquer provedor: repositórios não criam `User` nem `Group` (`catalog.rules`), e cada `spec.owner` precisa existir no diretório.
+
 ## Banco de dados
 
 O plugin do agente usa só o `coreServices.database` do Backstage. As migrações (`plugins/agent-backend/migrations`) e as consultas evitam recursos específicos de um banco, e os agregados do painel são calculados no Node, não no SQL. Trocar de banco é configuração de `backend.database`. Os testes rodam em SQLite e o portal em Postgres.
@@ -113,3 +128,5 @@ Os arquivos abaixo existem só para o ambiente de desenvolvimento. Cada um é es
 | `scripts/check-litellm.mjs` | Diagnóstico de um LiteLLM real (o da empresa) |
 | `scripts/setup-keycloak.sh` + `keycloak/realm-acme.json` | Keycloak local com usuários de teste |
 | `app-config.keycloak.yaml` | SSO e diretório pelo Keycloak (`./scripts/start-portal.sh --keycloak`) |
+| `app-config.github.yaml` + `github/` | Catálogo real pelo GitHub App (`--github`) |
+| `scripts/check-github.mjs` | Diagnóstico do GitHub App e do que será importado |

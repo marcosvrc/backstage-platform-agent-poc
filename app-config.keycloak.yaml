@@ -31,15 +31,6 @@ auth:
             - resolver: emailMatchingUserEntityProfileEmail
 
 catalog:
-  # Mesma lista do app-config.yaml, sem catalog/org/org.yaml: times e pessoas vêm do Keycloak.
-  # (listas na config substituem a anterior, não somam)
-  locations:
-    - type: file
-      target: ../../../catalog/all.yaml
-    - type: file
-      target: ../../../catalog/org/guest.yaml
-    - type: file
-      target: ../../../templates/all.yaml
   providers:
     keycloakOrg:
       default:

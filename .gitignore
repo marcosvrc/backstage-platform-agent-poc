@@ -7,3 +7,10 @@ evals/results/
 # Segredos do gateway de IA (gerado por scripts/setup-gateway.sh)
 gateway/.env
 keycloak/.env
+
+# Credenciais do GitHub App (catálogo real)
+github/.env
+github/*.pem
+
+# Config gerada pelo scripts/start-portal.sh
+.portal/
