@@ -24,7 +24,7 @@ node_modules/
 !.yarn/versions
 
 # Node version directives
-.nvmrc
+# .nvmrc é versionado: fixa a versão do Node usada no CI e localmente (22.12+).
 
 # dotenv environment variables file
 .env
