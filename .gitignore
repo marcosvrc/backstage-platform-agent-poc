@@ -14,3 +14,7 @@ github/*.pem
 
 # Config gerada pelo scripts/start-portal.sh
 .portal/
+
+# Segredos do deploy (deploy/create-secrets.sh)
+deploy/secrets.env
+deploy/secret-files/

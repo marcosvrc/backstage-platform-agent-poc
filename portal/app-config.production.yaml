@@ -1,19 +1,24 @@
+# Produção (vai dentro da imagem). Sem nenhum segredo nem valor de ambiente:
+# - segredos: variáveis do Secret "<release>-env" e arquivos do Secret "<release>-files"
+#   montados em /etc/backstage/secrets (veja deploy/README.md);
+# - URLs e opções do ambiente: variáveis do values.yaml do chart (deploy/helm) e o
+#   bloco appConfig, montado como um config extra.
+#
+# Ordem de leitura: app-config.yaml -> app-config.production.yaml -> app-config.deploy.yaml (Helm).
+
 app:
-  # Should be the same as backend.baseUrl when using the `app-backend` plugin.
-  baseUrl: http://localhost:7007
+  baseUrl: ${APP_BASE_URL}
+  signIn:
+    providers: [oidc]
+
+organization:
+  platformTeam: ${PLATFORM_TEAM}
 
 backend:
-  # Note that the baseUrl should be the URL that the browser and other clients
-  # should use when communicating with the backend, i.e. it needs to be
-  # reachable not just from within the backend host, but from all of your
-  # callers. When its value is "http://localhost:7007", it's strictly private
-  # and can't be reached by others.
-  baseUrl: http://localhost:7007
-  # The listener can also be expressed as a single <host>:<port> string. In this case we bind to
-  # all interfaces, the most permissive setting. The right value depends on your specific deployment.
+  baseUrl: ${APP_BASE_URL}
   listen: ':7007'
-
-  # config options: https://node-postgres.com/apis/client
+  cors:
+    origin: ${APP_BASE_URL}
   database:
     client: pg
     connection:
@@ -21,35 +26,92 @@ backend:
       port: ${POSTGRES_PORT}
       user: ${POSTGRES_USER}
       password: ${POSTGRES_PASSWORD}
-      # https://node-postgres.com/features/ssl
-      # you can set the sslmode configuration option via the `PGSSLMODE` environment variable
-      # see https://www.postgresql.org/docs/current/libpq-ssl.html Table 33.1. SSL Mode Descriptions (e.g. require)
-      # ssl:
-      #   ca: # if you have a CA file and want to verify it you can uncomment this section
-      #     $file: <file-path>/ca/server.crt
+      # TLS: defina PGSSLMODE=require (ou verify-full + NODE_EXTRA_CA_CERTS) no values.yaml.
 
 auth:
+  environment: production
+  # Estado do login OIDC (nonce, PKCE) numa sessão assinada.
+  session:
+    secret: ${BACKSTAGE_AUTH_SESSION_SECRET}
   providers:
-    guest: {}
+    # O guest é recusado em produção pelo próprio Backstage; fica sem config aqui.
+    oidc:
+      production:
+        metadataUrl: ${OIDC_METADATA_URL}
+        clientId: ${OIDC_CLIENT_ID}
+        clientSecret: ${OIDC_CLIENT_SECRET}
+        prompt: auto
+        signIn:
+          resolvers:
+            - resolver: emailMatchingUserEntityProfileEmail
+
+integrations:
+  github:
+    - host: github.com
+      apps:
+        - appId: ${GITHUB_APP_ID}
+          clientId: ${GITHUB_APP_CLIENT_ID}
+          clientSecret: ${GITHUB_APP_CLIENT_SECRET}
+          privateKey:
+            $file: /etc/backstage/secrets/github-app-private-key.pem
+          allowedInstallationOwners: ['${GITHUB_ORG}']
 
 catalog:
-  # Overrides the default list locations from app-config.yaml as these contain example data.
-  # See https://backstage.io/docs/features/software-catalog/#adding-components-to-the-catalog for more details
-  # on how to get entities into the catalog.
+  rules:
+    - allow: [Component, System, API, Resource, Location, Domain, Template]
+  # Só o que é da plataforma; serviços vêm do GitHub e pessoas/times do diretório.
   locations:
-    # Local example data, replace this with your production config, these are intended for demo use only.
-    # File locations are relative to the backend process, typically in a deployed context, such as in a Docker container, this will be the root
     - type: file
-      target: ./examples/entities.yaml
+      target: ./catalog/platform/all.yaml
+    - type: file
+      target: ./templates/all.yaml
+  providers:
+    keycloakOrg:
+      default:
+        baseUrl: ${KEYCLOAK_BASE_URL}
+        loginRealm: ${KEYCLOAK_REALM}
+        realm: ${KEYCLOAK_REALM}
+        clientId: ${KEYCLOAK_CATALOG_CLIENT_ID}
+        clientSecret: ${KEYCLOAK_CATALOG_CLIENT_SECRET}
+        schedule:
+          frequency: { minutes: 15 }
+          timeout: { minutes: 5 }
+          initialDelay: { seconds: 30 }
+    github:
+      empresa:
+        organization: ${GITHUB_ORG}
+        catalogPath: /catalog-info.yaml
+        filters:
+          allowForks: false
+          allowArchived: false
+        schedule:
+          frequency: { minutes: 30 }
+          timeout: { minutes: 10 }
+          initialDelay: { seconds: 60 }
 
-    # Local example template
-    - type: file
-      target: ./examples/template/template.yaml
-      rules:
-        - allow: [Template]
+techdocs:
+  builder: local
+  generator:
+    # Sem Docker dentro do cluster: o mkdocs vai na imagem.
+    runIn: local
+  publisher:
+    # Local = disco do pod (some ao reiniciar; com mais de 1 réplica, use awsS3/googleGcs/azureBlobStorage).
+    type: local
 
-    # Local example organizational data
-    - type: file
-      target: ./examples/org.yaml
-      rules:
-        - allow: [User, Group]
+agent:
+  gateway:
+    type: litellm
+    baseUrl: ${LITELLM_BASE_URL}
+    apiKey: ${LITELLM_PORTAL_KEY}
+    route: messages
+    model: ${LITELLM_MODEL}
+    tags: [app:backstage-agent]
+    # Keys de cada time (orçamento definido pelos admins do LiteLLM). Arquivo YAML
+    # "time: key" no Secret de arquivos; use {} se ainda não houver keys de time.
+    teamKeys:
+      $include: /etc/backstage/secrets/litellm-team-keys.yaml
+  governance:
+    # Em produção, só com aval da política de dados da empresa.
+    storePrompts: false
+    budgets:
+      enabled: true

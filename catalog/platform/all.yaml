@@ -1,0 +1,12 @@
+# Catálogo da própria plataforma: vale em produção (não é dado fictício).
+# Sistema developer-platform e o inventário de IA (modelo, gateway, agente, MCP).
+# Os donos usam group:platform-team: ajuste se o time de plataforma tiver outro nome no diretório.
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: platform-catalog
+  description: Sistema da plataforma e inventário de IA
+spec:
+  targets:
+    - ./developer-platform.yaml
+    - ../ai/ai.yaml

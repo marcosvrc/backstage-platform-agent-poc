@@ -1,0 +1,13 @@
+Portal {{ include "portal.fullname" . }} instalado.
+
+Segredos esperados (crie antes, veja deploy/README.md):
+  - Secret {{ .Values.secrets.envSecretName }}: POSTGRES_PASSWORD, BACKSTAGE_AUTH_SESSION_SECRET,
+    OIDC_CLIENT_SECRET, KEYCLOAK_CATALOG_CLIENT_SECRET, GITHUB_APP_CLIENT_SECRET, LITELLM_PORTAL_KEY
+  - Secret {{ .Values.secrets.filesSecretName }}: github-app-private-key.pem, litellm-team-keys.yaml
+
+Acompanhe: kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "portal.fullname" . }}
+{{- if .Values.ingress.enabled }}
+URL: https://{{ .Values.ingress.host }}
+{{- else }}
+Teste local: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "portal.fullname" . }} 7007:{{ .Values.service.port }}
+{{- end }}

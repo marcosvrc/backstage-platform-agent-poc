@@ -1,0 +1,112 @@
+# Valores do ambiente. Nada aqui é segredo: os segredos ficam em dois Secrets
+# criados à parte (veja secrets abaixo e deploy/README.md).
+
+image:
+  repository: ghcr.io/marcosvrc/backstage-platform-agent-poc
+  # Padrão: appVersion do chart. Em produção, fixe pela tag do commit (sha-<7 chars>).
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Com TechDocs no disco do pod (publisher local), mantenha 1 réplica ou troque o publisher.
+replicaCount: 1
+
+# Opções do ambiente, viram variáveis lidas pelo app-config.production.yaml.
+portal:
+  # URL pública do portal (a mesma do Ingress).
+  baseUrl: https://backstage.example.com
+  # Group do diretório com acesso ao painel de governança e aos alertas de orçamento.
+  platformTeam: group:default/platform-team
+  postgres:
+    host: postgres.example.internal
+    port: 5432
+    user: backstage
+    # disable | require | verify-full (com verify-full, informe a CA em caBundle)
+    sslMode: require
+  oidc:
+    # Ex. Keycloak: https://sso.example.com/realms/<realm>/.well-known/openid-configuration
+    metadataUrl: https://sso.example.com/realms/example/.well-known/openid-configuration
+    clientId: backstage
+  keycloak:
+    # Diretório (importação de usuários e grupos).
+    baseUrl: https://sso.example.com
+    realm: example
+    catalogClientId: backstage-catalog
+  github:
+    org: example-org
+    appId: "0"
+    appClientId: ""
+  litellm:
+    baseUrl: https://litellm.example.com
+    # Nome do modelo no model_list do LiteLLM (rode scripts/check-litellm.mjs).
+    model: claude-opus
+
+# Config extra do Backstage, mesclada por último (objetos se somam; listas substituem).
+# Ex.: recursos aceitos pelo LiteLLM e orçamento.
+appConfig: {}
+#  agent:
+#    gateway:
+#      features:
+#        effort: true
+#        promptCaching: true
+#    governance:
+#      budgets:
+#        thresholds: [0.8, 1]
+
+secrets:
+  # Variáveis: POSTGRES_PASSWORD, BACKSTAGE_AUTH_SESSION_SECRET, OIDC_CLIENT_SECRET,
+  # KEYCLOAK_CATALOG_CLIENT_SECRET, GITHUB_APP_CLIENT_SECRET, LITELLM_PORTAL_KEY
+  envSecretName: backstage-portal-env
+  # Arquivos: github-app-private-key.pem, litellm-team-keys.yaml
+  filesSecretName: backstage-portal-files
+
+# CA interna (LiteLLM, Keycloak ou Postgres com certificado da empresa).
+caBundle:
+  # ConfigMap existente com o certificado; vazio = não usa.
+  configMapName: ""
+  key: ca.crt
+
+# Variáveis extras (ex.: proxy corporativo HTTPS_PROXY/NO_PROXY).
+extraEnv: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 768Mi
+  limits:
+    memory: 1536Mi
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  host: backstage.example.com
+  annotations: {}
+  tls:
+    enabled: true
+    secretName: backstage-portal-tls
+
+serviceAccount:
+  create: true
+  name: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

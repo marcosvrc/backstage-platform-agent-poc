@@ -1,0 +1,81 @@
+# CI do portal: tipos, lint e testes em todo push/PR; na master, publica a imagem
+# no GitHub Container Registry (ghcr.io/<dono>/<repo>) com as tags sha-<commit> e latest.
+name: portal
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: portal/.nvmrc
+      - run: corepack enable
+      - run: yarn install --immutable
+      - run: yarn tsc
+      - run: yarn backstage-cli repo lint
+      - run: yarn backstage-cli repo test
+        env:
+          CI: 'true'
+      - name: Helm lint
+        working-directory: deploy/helm/backstage-portal
+        run: helm lint .
+      - name: Build do backend
+        run: yarn build:backend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: |
+            portal/packages/backend/dist/skeleton.tar.gz
+            portal/packages/backend/dist/bundle.tar.gz
+          retention-days: 3
+
+  image:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-dist
+          path: portal/packages/backend/dist
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "portal.fullname" . }}
+  labels:
+    {{- include "portal.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "portal.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "portal.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Reinicia os pods quando a config muda.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "portal.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: backstage
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - node
+            - packages/backend
+            - --config
+            - app-config.yaml
+            - --config
+            - app-config.production.yaml
+            - --config
+            - /etc/backstage/app-config.deploy.yaml
+          ports:
+            - name: http
+              containerPort: 7007
+          envFrom:
+            - configMapRef:
+                name: {{ include "portal.fullname" . }}-env
+            - secretRef:
+                name: {{ .Values.secrets.envSecretName }}
+          env:
+            {{- if .Values.caBundle.configMapName }}
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/backstage/ca/{{ .Values.caBundle.key }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /.backstage/health/v1/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /.backstage/health/v1/liveness
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /.backstage/health/v1/readiness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: app-config
+              mountPath: /etc/backstage/app-config.deploy.yaml
+              subPath: app-config.deploy.yaml
+              readOnly: true
+            - name: secret-files
+              mountPath: /etc/backstage/secrets
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.caBundle.configMapName }}
+            - name: ca
+              mountPath: /etc/backstage/ca
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: app-config
+          configMap:
+            name: {{ include "portal.fullname" . }}-app-config
+        - name: secret-files
+          secret:
+            secretName: {{ .Values.secrets.filesSecretName }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.caBundle.configMapName }}
+        - name: ca
+          configMap:
+            name: {{ .Values.caBundle.configMapName }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

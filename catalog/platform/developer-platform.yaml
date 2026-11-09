@@ -1,0 +1,8 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: developer-platform
+  title: Developer Platform
+  description: Portal, golden paths e documentação da plataforma
+spec:
+  owner: group:platform-team

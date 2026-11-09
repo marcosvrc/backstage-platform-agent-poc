@@ -1,0 +1,6 @@
+apiVersion: v2
+name: backstage-portal
+description: Portal Backstage com o Platform Agent (SSO via OIDC, catálogo do GitHub, gateway LiteLLM)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

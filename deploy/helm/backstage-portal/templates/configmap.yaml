@@ -1,0 +1,41 @@
+# Opções do ambiente (sem segredos): variáveis e o config extra do Backstage.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "portal.fullname" . }}-env
+  labels:
+    {{- include "portal.labels" . | nindent 4 }}
+data:
+  {{- with .Values.portal }}
+  APP_BASE_URL: {{ .baseUrl | quote }}
+  PLATFORM_TEAM: {{ .platformTeam | quote }}
+  POSTGRES_HOST: {{ .postgres.host | quote }}
+  POSTGRES_PORT: {{ .postgres.port | quote }}
+  POSTGRES_USER: {{ .postgres.user | quote }}
+  PGSSLMODE: {{ .postgres.sslMode | quote }}
+  OIDC_METADATA_URL: {{ .oidc.metadataUrl | quote }}
+  OIDC_CLIENT_ID: {{ .oidc.clientId | quote }}
+  KEYCLOAK_BASE_URL: {{ .keycloak.baseUrl | quote }}
+  KEYCLOAK_REALM: {{ .keycloak.realm | quote }}
+  KEYCLOAK_CATALOG_CLIENT_ID: {{ .keycloak.catalogClientId | quote }}
+  GITHUB_ORG: {{ .github.org | quote }}
+  GITHUB_APP_ID: {{ .github.appId | quote }}
+  GITHUB_APP_CLIENT_ID: {{ .github.appClientId | quote }}
+  LITELLM_BASE_URL: {{ .litellm.baseUrl | quote }}
+  LITELLM_MODEL: {{ .litellm.model | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "portal.fullname" . }}-app-config
+  labels:
+    {{- include "portal.labels" . | nindent 4 }}
+data:
+  app-config.deploy.yaml: |
+    # Gerado pelo chart a partir de .Values.appConfig.
+    {{- if .Values.appConfig }}
+    {{- toYaml .Values.appConfig | nindent 4 }}
+    {{- else }}
+    {}
+    {{- end }}

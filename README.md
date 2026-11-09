@@ -46,6 +46,9 @@ Agente (Claude Code / chat no portal)  ──MCP──►  Backstage
 ├── personas/                # logins de teste (ana, bruno, diego) para validar permissões
 ├── scripts/                 # start-portal, setup-keycloak, setup-gateway, setup-agent-token, check-permissions
 ├── docs/                    # integrações (como trocar cada tecnologia) e relatório de go/no-go
+├── deploy/                  # chart Helm, Secrets e guia de deploy em Kubernetes
+├── Dockerfile               # imagem do portal (contexto: raiz do repositório)
+├── .github/workflows/       # CI: tipos, lint, testes e imagem no GHCR
 ├── docker-compose.yml       # Postgres, LiteLLM e Keycloak locais
 ├── app-config.keycloak.yaml # override: SSO e diretório pelo Keycloak
 └── app-config.sqlite.yaml   # override para rodar sem Docker
@@ -166,6 +169,16 @@ O portal lê os repositórios com um **GitHub App** da organização, e não com
 **Piloto:** para começar por alguns repositórios, use `filters.repository` (regex no nome) ou `filters.topic.include` em `app-config.github.yaml`.
 
 **Repositórios sem `catalog-info.yaml`** ficam de fora. Podem entrar aos poucos: o agente cria o serviço já com o arquivo (pelos templates), e repositórios existentes podem ser registrados em "Registrar componente" no portal.
+
+## Produção (imagem e Kubernetes)
+
+- **Imagem:** o workflow `.github/workflows/portal.yml` roda tipos, lint e testes a cada push e PR. Na `master`, ele publica `ghcr.io/<dono>/<repo>` com as tags `sha-<commit>` e `latest`. Para gerar localmente:
+  ```bash
+  cd portal && yarn install --immutable && yarn tsc && yarn build:backend && cd ..
+  docker build -t backstage-portal .
+  ```
+- **Configuração:** o `portal/app-config.production.yaml` vai dentro da imagem e não tem segredos nem URLs, só referências a variáveis e arquivos. O login é só SSO (o guest é recusado em produção), o catálogo vem do GitHub e do diretório, o gateway é o LiteLLM pela rota `/v1/messages` e o TechDocs é gerado no próprio pod.
+- **Deploy:** chart Helm em `deploy/helm/backstage-portal`. As opções do ambiente ficam no `values.yaml`, e os segredos em dois Secrets do Kubernetes criados à parte (`deploy/create-secrets.sh` ou o pipeline a partir do cofre). O passo a passo está em [deploy/README.md](deploy/README.md).
 
 ## Servidor MCP
 
@@ -404,4 +417,4 @@ Cada rodada é publicada no painel de governança, na aba Qualidade. Use `--no-p
   - [x] LiteLLM corporativo: rota `/v1/messages` (Claude via Bedrock), recursos configuráveis, keys de team dos admins e diagnóstico (`scripts/check-litellm.mjs`)
   - [x] Conectores: modelo de IA em módulos (`agent-node` + módulos LiteLLM e Anthropic), SSO por OIDC configurável e [mapa de integrações](docs/integracoes.md)
   - [x] Catálogo real: repositórios da organização no GitHub via GitHub App, com diagnóstico (`scripts/check-github.mjs`)
-  - [ ] Segredos e deploy
+  - [x] Segredos e deploy: imagem no GHCR (GitHub Actions), chart Helm e Secrets do Kubernetes ([deploy/README.md](deploy/README.md))

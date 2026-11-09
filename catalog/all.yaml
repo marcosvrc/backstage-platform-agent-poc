@@ -9,7 +9,7 @@ spec:
     - ./systems/systems.yaml
     - ./apis/apis.yaml
     - ./resources/resources.yaml
-    - ./ai/ai.yaml
+    - ./platform/all.yaml
     - ./components/cart-web/catalog-info.yaml
     - ./components/order-service/catalog-info.yaml
     - ./components/payment-service/catalog-info.yaml

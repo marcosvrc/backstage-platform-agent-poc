@@ -73,6 +73,7 @@ done
 # então a lista inteira é montada aqui, num arquivo gerado.
 #   templates (golden paths) .......... sempre
 #   catálogo fictício da Acme ......... só sem --github (o catálogo real vem do GitHub)
+#   catálogo da plataforma (IA) ....... sempre (dentro do fictício ou sozinho)
 #   times e pessoas (org.yaml) ........ só sem --keycloak (com ele, vêm do diretório)
 #   usuário guest (guest.yaml) ........ sempre (evals e scripts locais)
 GENERATED="$ROOT/.portal/app-config.catalog-locations.yaml"
@@ -90,7 +91,8 @@ location() { # caminho [tipos permitidos além das regras globais]
   echo "catalog:"
   echo "  locations:"
   location templates/all.yaml
-  [ "$GITHUB" -eq 1 ] || location catalog/all.yaml
+  # Catálogo fictício (inclui o da plataforma) ou, no modo real, só o da plataforma.
+  if [ "$GITHUB" -eq 1 ]; then location catalog/platform/all.yaml; else location catalog/all.yaml; fi
   [ "$KEYCLOAK" -eq 1 ] || location catalog/org/org.yaml "Group, User"
   location catalog/org/guest.yaml "User"
 } > "$GENERATED"

@@ -1,0 +1,15 @@
+# Lista do que PODE entrar na imagem (o resto, inclusive segredos locais, fica de fora).
+*
+!portal/.yarn/releases
+!portal/.yarn/plugins
+!portal/.yarnrc.yml
+!portal/backstage.json
+!portal/yarn.lock
+!portal/package.json
+!portal/packages/backend/dist/skeleton.tar.gz
+!portal/packages/backend/dist/bundle.tar.gz
+!portal/app-config.yaml
+!portal/app-config.production.yaml
+!catalog/platform
+!catalog/ai
+!templates
